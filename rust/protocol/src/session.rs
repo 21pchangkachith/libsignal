@@ -43,25 +43,18 @@ its reference to the various data stores, instead the functions are
 free standing.
  */
 
-
-// Bob's X3DH Receive function for Alice's first message
-// Paper: Receive(iskr, str, ipks, t, p)
 pub async fn process_prekey<'a>(
-    message: &'a PreKeySignalMessage,       // Alice's first message, params defined in protocol.rs
-                                            // Paper: corresponds to message with (ipks, t, p)
-    remote_address: &'a ProtocolAddress,    // Logical identifier for Alice
-    session_record: &mut SessionRecord,     // Bob's local session state w/ Alice. Defined in state.session.rs
-    identity_store: &dyn IdentityKeyStore,  
-    
-    pre_key_store: &dyn PreKeyStore,                // Holds Bob's one-time EC prekeys (OPK)
-    signed_prekey_store: &dyn SignedPreKeyStore,    // Holds Bob's signed EC prekeys (SPK)
-    kyber_prekey_store: &dyn KyberPreKeyStore,      // Holds Bob's PQ Kyber prekeys
-                                                    // Defined across state/, storage/, kem.rs
-                                                    // Paper: iskr, str
+    message: &'a PreKeySignalMessage,
+    remote_address: &'a ProtocolAddress,
+    session_record: &mut SessionRecord,
+    identity_store: &dyn IdentityKeyStore,
+    pre_key_store: &dyn PreKeyStore,
+    signed_prekey_store: &dyn SignedPreKeyStore,
+    kyber_prekey_store: &dyn KyberPreKeyStore,
 ) -> Result<(Option<PreKeysUsed>, IdentityToSave<'a>)> {
-    let their_identity_key = message.identity_key();    // Extract Alice's identity public key ipks
+    let their_identity_key = message.identity_key();
 
-    if !identity_store  // TOFU stuff
+    if !identity_store
         .is_trusted_identity(remote_address, their_identity_key, Direction::Receiving)
         .await?
     {
@@ -70,7 +63,7 @@ pub async fn process_prekey<'a>(
         ));
     }
 
-    let pre_keys_used = process_prekey_impl(    // Splits up logic to avoid errors?
+    let pre_keys_used = process_prekey_impl(
         message,
         remote_address,
         session_record,
@@ -81,29 +74,26 @@ pub async fn process_prekey<'a>(
     )
     .await?;
 
-    let identity_to_save = IdentityToSave {     // Save identity after successful session creation
+    let identity_to_save = IdentityToSave {
         remote_address,
         their_identity_key,
     };
 
-    Ok((pre_keys_used, identity_to_save))   // Caller gets prekeys consumed & identity to be saved
+    Ok((pre_keys_used, identity_to_save))
 }
 
-// Bob receives initial PreKey message from Alice
 async fn process_prekey_impl(
-    message: &PreKeySignalMessage,  // Alice's initial prekey message (ephemeral keys, signed prekey IDs, etc.)
-    remote_address: &ProtocolAddress,   // Alice's address
-    session_record: &mut SessionRecord, // Bob's session storage for this contact
-    
-    signed_prekey_store: &dyn SignedPreKeyStore,    // Same as prev function
+    message: &PreKeySignalMessage,
+    remote_address: &ProtocolAddress,
+    session_record: &mut SessionRecord,
+    signed_prekey_store: &dyn SignedPreKeyStore,
     kyber_prekey_store: &dyn KyberPreKeyStore,
     pre_key_store: &dyn PreKeyStore,
-    
-    identity_store: &dyn IdentityKeyStore,  // Bob's long-term identity keys
+    identity_store: &dyn IdentityKeyStore,
 ) -> Result<Option<PreKeysUsed>> {
     if session_record.promote_matching_session(
         message.message_version() as u32,
-        &message.base_key().serialize(),    // base_key = Alice's DH key
+        &message.base_key().serialize(),
     )? {
         // We've already set up a session for this message, we can exit early.
         return Ok(None);
@@ -121,14 +111,12 @@ async fn process_prekey_impl(
         ));
     }
 
-    let our_signed_pre_key_pair = signed_prekey_store   // Retrieve Bob's signed prekey
-                                                        // Paper: prekr (?) 
+    let our_signed_pre_key_pair = signed_prekey_store
         .get_signed_pre_key(message.signed_pre_key_id())
         .await?
         .key_pair()?;
 
-    // Retrieve Bob's Kyber prekey (post-quantum)
-    let our_kyber_pre_key_pair = if let Some(kyber_pre_key_id) = message.kyber_pre_key_id() {  
+    let our_kyber_pre_key_pair = if let Some(kyber_pre_key_id) = message.kyber_pre_key_id() {
         kyber_prekey_store
             .get_kyber_pre_key(kyber_pre_key_id)
             .await?
@@ -139,10 +127,6 @@ async fn process_prekey_impl(
             "missing pq pre-key ID",
         ));
     };
-    
-    // Extract Kyber ciphertext from Alice
-    // Alice encrypted a secret w/ Bob's Kyber public prekey
-    // Paper: PQ equivalent of DH key exchange
     let kyber_ciphertext =
         message
             .kyber_ciphertext()
@@ -151,7 +135,6 @@ async fn process_prekey_impl(
                 "missing pq ciphertext",
             ))?;
 
-    // Optional one-time prekey from Alice
     let our_one_time_pre_key_pair = if let Some(pre_key_id) = message.pre_key_id() {
         log::info!("processing PreKey message from {remote_address}");
         Some(pre_key_store.get_pre_key(pre_key_id).await?.key_pair()?)
@@ -161,23 +144,21 @@ async fn process_prekey_impl(
     };
 
     let parameters = BobSignalProtocolParameters::new(
-        identity_store.get_identity_key_pair().await?,  // ipkr
+        identity_store.get_identity_key_pair().await?,
         our_signed_pre_key_pair, // signed pre key
         our_one_time_pre_key_pair,
-        our_signed_pre_key_pair, // ratchet key (for DH ratchet)
+        our_signed_pre_key_pair, // ratchet key
         our_kyber_pre_key_pair,
-        *message.identity_key(), // Alice's ipks
-        *message.base_key(),     // Alice's ephemeral base key
-        kyber_ciphertext,        // Alice's Kyber ciphertext  
+        *message.identity_key(),
+        *message.base_key(),
+        kyber_ciphertext,
     );
 
-    let mut new_session = ratchet::initialize_bob_session(&parameters)?;    // ratchet.rs
+    let mut new_session = ratchet::initialize_bob_session(&parameters)?;
 
-    // Bob & Alice's device IDs
     new_session.set_local_registration_id(identity_store.get_local_registration_id().await?);
     new_session.set_remote_registration_id(message.registration_id());
 
-    // Store session state
     session_record.promote_state(new_session);
 
     let pre_keys_used = PreKeysUsed {
@@ -185,21 +166,20 @@ async fn process_prekey_impl(
         signed_ec_pre_key_id: message.signed_pre_key_id(),
         kyber_pre_key_id: message.kyber_pre_key_id(),
     };
-    Ok(Some(pre_keys_used)) // Return IDs of prekeys consumed this session (remove one-times after use)
+    Ok(Some(pre_keys_used))
 }
 
-// Alice receives Bob's prekey bundle and sets up session for first message
 pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
-    remote_address: &ProtocolAddress,   // Bob's address
-    session_store: &mut dyn SessionStore,   // Alice's session storafe
-    identity_store: &mut dyn IdentityKeyStore,  // Alice's identity keys
-    bundle: &PreKeyBundle,  // Bob's prekey bundle (SPK, OPK, PQ PK)
+    remote_address: &ProtocolAddress,
+    session_store: &mut dyn SessionStore,
+    identity_store: &mut dyn IdentityKeyStore,
+    bundle: &PreKeyBundle,
     now: SystemTime,
-    mut csprng: &mut R, // Cryptographically secure RNG for ephemeral key generation
+    mut csprng: &mut R,
 ) -> Result<()> {
-    let their_identity_key = bundle.identity_key()?; // Retrive Bob's long-term identity key (ipkr)
+    let their_identity_key = bundle.identity_key()?;
 
-    if !identity_store  // Check if Bob's identity is trustworthy (MITM protection)
+    if !identity_store
         .is_trusted_identity(remote_address, their_identity_key, Direction::Sending)
         .await?
     {
@@ -208,7 +188,6 @@ pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
         ));
     }
 
-    // Verify Bob's SPK and Kyber PK w/ Bob's identity key (ipkr)
     if !their_identity_key.public_key().verify_signature(
         &bundle.signed_pre_key_public()?.serialize(),
         bundle.signed_pre_key_signature()?,
@@ -223,25 +202,23 @@ pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
         return Err(SignalProtocolError::SignatureValidationFailed);
     }
 
-    // Load/Create Alice's session record
     let mut session_record = session_store
         .load_session(remote_address)
         .await?
         .unwrap_or_else(SessionRecord::new_fresh);
 
-    let our_base_key_pair = KeyPair::generate(&mut csprng); // Generates Alice's ephemeral DH key (base key)
-    
-    // Extract all of Bob's prekeys from bundle
+    let our_base_key_pair = KeyPair::generate(&mut csprng);
     let their_signed_prekey = bundle.signed_pre_key_public()?;
     let their_kyber_prekey = bundle.kyber_pre_key_public()?;
+
     let their_one_time_prekey_id = bundle.pre_key_id()?;
 
-    let our_identity_key_pair = identity_store.get_identity_key_pair().await?;  // Retrieve Alice's identity key (ipks)
+    let our_identity_key_pair = identity_store.get_identity_key_pair().await?;
 
     let mut parameters = AliceSignalProtocolParameters::new(
-        our_identity_key_pair,  // our = Alice/sender
+        our_identity_key_pair,
         our_base_key_pair,
-        *their_identity_key,    // their = Bob/receiver
+        *their_identity_key,
         their_signed_prekey,
         their_signed_prekey,
         their_kyber_prekey.clone(),
@@ -250,16 +227,14 @@ pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
         parameters.set_their_one_time_pre_key(key);
     }
 
-    let mut session = ratchet::initialize_alice_session(&parameters, csprng)?;  // Compute shared secrets w/ X3DH and PQ Kyber keys
+    let mut session = ratchet::initialize_alice_session(&parameters, csprng)?;
 
-    // Debugging
     log::info!(
         "set_unacknowledged_pre_key_message for: {} with preKeyId: {}",
         remote_address,
         their_one_time_prekey_id.map_or_else(|| "<none>".to_string(), |id| id.to_string())
     );
 
-    // Mark prekeys Alice has used but Bob has not acknowledged
     session.set_unacknowledged_pre_key_message(
         their_one_time_prekey_id,
         bundle.signed_pre_key_id()?,
@@ -268,16 +243,13 @@ pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
     );
     session.set_unacknowledged_kyber_pre_key_id(bundle.kyber_pre_key_id()?);
 
-    // Device IDs
     session.set_local_registration_id(identity_store.get_local_registration_id().await?);
     session.set_remote_registration_id(bundle.registration_id()?);
 
-    // Remember Bob's identity
     identity_store
         .save_identity(remote_address, their_identity_key)
         .await?;
 
-    // Save session into Alice's session store
     session_record.promote_state(session);
 
     session_store

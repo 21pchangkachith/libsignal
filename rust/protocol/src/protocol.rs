@@ -20,10 +20,11 @@ pub(crate) const CIPHERTEXT_MESSAGE_CURRENT_VERSION: u8 = 4;
 pub(crate) const CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION: u8 = 3;
 pub(crate) const SENDERKEY_MESSAGE_CURRENT_VERSION: u8 = 3;
 
+// Different types of messages that can be sent
 #[derive(Debug)]
 pub enum CiphertextMessage {
     SignalMessage(SignalMessage),
-    PreKeySignalMessage(PreKeySignalMessage),
+    PreKeySignalMessage(PreKeySignalMessage), // First message sent in new session using prekey bundle
     SenderKeyMessage(SenderKeyMessage),
     PlaintextContent(PlaintextContent),
 }
@@ -31,14 +32,17 @@ pub enum CiphertextMessage {
 #[derive(Copy, Clone, Eq, PartialEq, Debug, derive_more::TryFrom)]
 #[repr(u8)]
 #[try_from(repr)]
+// Used in session.rs process_prekey_impl()
+// Numeric type tag for messages
 pub enum CiphertextMessageType {
     Whisper = 2,
-    PreKey = 3,
+    PreKey = 3, // X3DH first message
     SenderKey = 7,
     Plaintext = 8,
 }
 
 impl CiphertextMessage {
+    // Return numeric type corresponding to message variant
     pub fn message_type(&self) -> CiphertextMessageType {
         match self {
             CiphertextMessage::SignalMessage(_) => CiphertextMessageType::Whisper,
@@ -47,7 +51,7 @@ impl CiphertextMessage {
             CiphertextMessage::PlaintextContent(_) => CiphertextMessageType::Plaintext,
         }
     }
-
+    // Return byte slice representing actual message on wire
     pub fn serialize(&self) -> &[u8] {
         match self {
             CiphertextMessage::SignalMessage(x) => x.serialized(),
@@ -59,14 +63,16 @@ impl CiphertextMessage {
 }
 
 #[derive(Debug, Clone)]
+// Regular end-to-end encrypted message in Signal
+// After initial X3DH session
 pub struct SignalMessage {
     message_version: u8,
-    sender_ratchet_key: PublicKey,
+    sender_ratchet_key: PublicKey,  // Alice/Bob's ephemeral DH key for message
     counter: u32,
     #[cfg_attr(not(test), expect(dead_code))]
     previous_counter: u32,
-    ciphertext: Box<[u8]>,
-    pq_ratchet: spqr::SerializedState,
+    ciphertext: Box<[u8]>,  // Encrypted content
+    pq_ratchet: spqr::SerializedState,  // Post-quantum ratchet state
     serialized: Box<[u8]>,
 }
 
@@ -77,14 +83,15 @@ impl SignalMessage {
     pub fn new(
         message_version: u8,
         mac_key: &[u8],
-        sender_ratchet_key: PublicKey,
+        sender_ratchet_key: PublicKey,  // Ephemeral key for this message
         counter: u32,
         previous_counter: u32,
         ciphertext: &[u8],
-        sender_identity_key: &IdentityKey,
-        receiver_identity_key: &IdentityKey,
+        sender_identity_key: &IdentityKey,  // Alice's long-term identity key (ikA)
+        receiver_identity_key: &IdentityKey,    // Bob's long-term identity key (ikB)
         pq_ratchet: &[u8],
     ) -> Result<Self> {
+        // Wraps fields into protobuf wire message used for sending over the network
         let message = proto::wire::SignalMessage {
             ratchet_key: Some(sender_ratchet_key.serialize().into_vec()),
             counter: Some(counter),
@@ -96,11 +103,13 @@ impl SignalMessage {
                 Some(pq_ratchet.to_vec())
             },
         };
+        // Prepare serialized buffer
         let mut serialized = Vec::with_capacity(1 + message.encoded_len() + Self::MAC_LENGTH);
         serialized.push(((message_version & 0xF) << 4) | CIPHERTEXT_MESSAGE_CURRENT_VERSION);
         message
             .encode(&mut serialized)
             .expect("can always append to a buffer");
+        // Generates 8-byte auth tag for message    
         let mac = Self::compute_mac(
             sender_identity_key,
             receiver_identity_key,
@@ -120,6 +129,7 @@ impl SignalMessage {
         })
     }
 
+    // Accessors
     #[inline]
     pub fn message_version(&self) -> u8 {
         self.message_version
@@ -150,18 +160,21 @@ impl SignalMessage {
         &self.ciphertext
     }
 
+    // Verify the Message Authentication Code
     pub fn verify_mac(
         &self,
-        sender_identity_key: &IdentityKey,
-        receiver_identity_key: &IdentityKey,
+        sender_identity_key: &IdentityKey,  // Alice's ik
+        receiver_identity_key: &IdentityKey,    // Bob's ik
         mac_key: &[u8],
     ) -> Result<bool> {
         let (content, their_mac) = self
             .serialized
             .split_last_chunk::<{ Self::MAC_LENGTH }>()
             .expect("length checked at construction");
+        // Compute MAC locally using same key and identity binding, check if equal
         let our_mac =
             Self::compute_mac(sender_identity_key, receiver_identity_key, mac_key, content)?;
+        //Prevent timing attacks
         let result: bool = our_mac.ct_eq(their_mac).into();
         if !result {
             // A warning instead of an error because we try multiple sessions.
@@ -175,25 +188,31 @@ impl SignalMessage {
     }
 
     fn compute_mac(
-        sender_identity_key: &IdentityKey,
-        receiver_identity_key: &IdentityKey,
-        mac_key: &[u8],
+        sender_identity_key: &IdentityKey,  // Alice's ikA
+        receiver_identity_key: &IdentityKey,    // Bob's ikB
+        mac_key: &[u8], // Derived from SK in the slide deck
         message: &[u8],
     ) -> Result<[u8; Self::MAC_LENGTH]> {
+        // Expects 32-byte MAC key
         if mac_key.len() != 32 {
             return Err(SignalProtocolError::InvalidMacKeyLength(mac_key.len()));
         }
+        // Create HMAC instance (standard secure MAC function)
         let mut mac = Hmac::<Sha256>::new_from_slice(mac_key)
             .expect("HMAC-SHA256 should accept any size key");
 
+        // Feed identity keys into HMAC function and binds MAC to both identities
+        // Implements SAS-MA style authentication to prevent MITM attacks
         mac.update(sender_identity_key.public_key().serialize().as_ref());
         mac.update(receiver_identity_key.public_key().serialize().as_ref());
         mac.update(message);
+        // Finalize and truncate HMAC
         let result = *mac
             .finalize()
             .into_bytes()
             .first_chunk()
             .expect("enough bytes");
+        // Verified in previous function verify_mac()
         Ok(result)
     }
 }
@@ -204,13 +223,16 @@ impl AsRef<[u8]> for SignalMessage {
     }
 }
 
-impl TryFrom<&[u8]> for SignalMessage {
+// Allows constructing SignalMessage from raw bytes received from network
+impl TryFrom<&[u8]> for SignalMessage {   // Alice's SignalMessage that is received by Bob
     type Error = SignalProtocolError;
 
     fn try_from(value: &[u8]) -> Result<Self> {
+        // Incoming byte long enough for version + MAC
         if value.len() < SignalMessage::MAC_LENGTH + 1 {
             return Err(SignalProtocolError::CiphertextMessageTooShort(value.len()));
         }
+        // Checks version (X3DH/PQ)
         let message_version = value[0] >> 4;
         if message_version < CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION {
             return Err(SignalProtocolError::LegacyCiphertextVersion(
@@ -226,15 +248,16 @@ impl TryFrom<&[u8]> for SignalMessage {
         let proto_structure =
             proto::wire::SignalMessage::decode(&value[1..value.len() - SignalMessage::MAC_LENGTH])
                 .map_err(|_| SignalProtocolError::InvalidProtobufEncoding)?;
-
+        // Converts serialized byte array into PublicKey object
         let sender_ratchet_key = proto_structure
             .ratchet_key
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
         let sender_ratchet_key = PublicKey::deserialize(&sender_ratchet_key)?;
-        let counter = proto_structure
+        let counter = proto_structure   // Message ordering
             .counter
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
         let previous_counter = proto_structure.previous_counter.unwrap_or(0);
+        // Encrypted payload
         let ciphertext = proto_structure
             .ciphertext
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?
@@ -254,10 +277,11 @@ impl TryFrom<&[u8]> for SignalMessage {
 
 #[derive(Debug, Clone)]
 pub struct KyberPayload {
-    pre_key_id: KyberPreKeyId,
-    ciphertext: kem::SerializedCiphertext,
+    pre_key_id: KyberPreKeyId,  // Similar to one-time prekeys in X3DH
+    ciphertext: kem::SerializedCiphertext,  // PQ shared secret
 }
 
+// Constructor for PQXDH Kyber payload
 impl KyberPayload {
     pub fn new(id: KyberPreKeyId, ciphertext: kem::SerializedCiphertext) -> Self {
         Self {
@@ -268,6 +292,7 @@ impl KyberPayload {
 }
 
 #[derive(Debug, Clone)]
+// First message Alice sends to Bob
 pub struct PreKeySignalMessage {
     message_version: u8,
     registration_id: u32,
@@ -283,16 +308,22 @@ pub struct PreKeySignalMessage {
 }
 
 impl PreKeySignalMessage {
+    // Fully serialized PreKeySignalMessage to send over network
     pub fn new(
         message_version: u8,
         registration_id: u32,
-        pre_key_id: Option<PreKeyId>,
+        
+        // Bob's prekeys
+        pre_key_id: Option<PreKeyId>,  
         signed_pre_key_id: SignedPreKeyId,
+
         kyber_payload: Option<KyberPayload>,
-        base_key: PublicKey,
-        identity_key: IdentityKey,
-        message: SignalMessage,
+        base_key: PublicKey,    // Ephemeral keys
+        identity_key: IdentityKey, 
+        message: SignalMessage, // Encrypted payload + MAC
     ) -> Result<Self> {
+        
+        // Converts Rust structs into protobuf format
         let proto_message = proto::wire::PreKeySignalMessage {
             registration_id: Some(registration_id),
             pre_key_id: pre_key_id.map(|id| id.into()),
@@ -305,6 +336,7 @@ impl PreKeySignalMessage {
             identity_key: Some(identity_key.serialize().into_vec()),
             message: Some(Vec::from(message.as_ref())),
         };
+        // Alice's network-ready serialized message
         let mut serialized = Vec::with_capacity(1 + proto_message.encoded_len());
         serialized.push(((message_version & 0xF) << 4) | CIPHERTEXT_MESSAGE_CURRENT_VERSION);
         proto_message
@@ -323,6 +355,7 @@ impl PreKeySignalMessage {
         })
     }
 
+    // Accessors
     #[inline]
     pub fn message_version(&self) -> u8 {
         self.message_version
@@ -380,14 +413,15 @@ impl AsRef<[u8]> for PreKeySignalMessage {
     }
 }
 
-impl TryFrom<&[u8]> for PreKeySignalMessage {
+impl TryFrom<&[u8]> for PreKeySignalMessage {   // Received raw bytes from network
     type Error = SignalProtocolError;
 
     fn try_from(value: &[u8]) -> Result<Self> {
+        // Sanity checks
         if value.is_empty() {
             return Err(SignalProtocolError::CiphertextMessageTooShort(value.len()));
         }
-
+        // Version handling, rejects pre-PQ messages
         let message_version = value[0] >> 4;
         if message_version < CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION {
             return Err(SignalProtocolError::LegacyCiphertextVersion(
@@ -403,27 +437,31 @@ impl TryFrom<&[u8]> for PreKeySignalMessage {
         let proto_structure = proto::wire::PreKeySignalMessage::decode(&value[1..])
             .map_err(|_| SignalProtocolError::InvalidProtobufEncoding)?;
 
-        let base_key = proto_structure
+        let base_key = proto_structure  // Alice's ephemeral DH key (epkA)
             .base_key
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
-        let identity_key = proto_structure
+        let identity_key = proto_structure  // Alice's identity key (ipkA)
             .identity_key
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
-        let message = proto_structure
+        let message = proto_structure   // Payload + MAC
             .message
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
-        let signed_pre_key_id = proto_structure
+        let signed_pre_key_id = proto_structure // Bob's signed prekey
             .signed_pre_key_id
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
 
+        // Converts to elliptic curve public key?
         let base_key = PublicKey::deserialize(base_key.as_ref())?;
 
         let kyber_payload = match (
             proto_structure.kyber_pre_key_id,
             proto_structure.kyber_ciphertext,
         ) {
+            // Normal PQ case: Kyber prekey ID & ciphertext present
             (Some(id), Some(ct)) => Some(KyberPayload::new(id.into(), ct.into_boxed_slice())),
+            // Backward compatibility
             (None, None) if message_version <= CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION => None,
+            // Require Kyber, can't have partial Kyber payload
             (None, None) => {
                 return Err(SignalProtocolError::InvalidMessage(
                     CiphertextMessageType::PreKey,
@@ -446,7 +484,7 @@ impl TryFrom<&[u8]> for PreKeySignalMessage {
             kyber_payload,
             base_key,
             identity_key: IdentityKey::try_from(identity_key.as_ref())?,
-            message: SignalMessage::try_from(message.as_ref())?,
+            message: SignalMessage::try_from(message.as_ref())?,    // Validates ciphertext format & internal structure
             serialized: Box::from(value),
         })
     }
@@ -462,6 +500,7 @@ pub struct SenderKeyMessage {
     serialized: Box<[u8]>,
 }
 
+// Group messaging protocol, not used in X3DH, skipping SenderKey sections for now
 impl SenderKeyMessage {
     const SIGNATURE_LEN: usize = 64;
 
@@ -739,6 +778,7 @@ impl TryFrom<&[u8]> for SenderKeyDistributionMessage {
     }
 }
 
+// Also not currently relevant to X3DH/PQXDH protocols
 #[derive(Debug, Clone)]
 pub struct PlaintextContent {
     serialized: Box<[u8]>,

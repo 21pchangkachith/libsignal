@@ -49,6 +49,7 @@ free standing.
 pub async fn process_prekey<'a>(
     message: &'a PreKeySignalMessage,       // Alice's first message, params defined in protocol.rs
                                             // Paper: corresponds to message with (ipks, t, p)
+                                            // Defined in protocol.rs
     remote_address: &'a ProtocolAddress,    // Logical identifier for Alice
     session_record: &mut SessionRecord,     // Bob's local session state w/ Alice. Defined in state.session.rs
     identity_store: &dyn IdentityKeyStore,  
@@ -111,7 +112,7 @@ async fn process_prekey_impl(
 
     // Check this *after* looking for an existing session; since we have already performed XDH for
     // such a session, enforcing PQXDH *now* would be silly.
-    if message.message_version() == CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION {
+    if message.message_version() == CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION { // References protocol.rs
         // Specifically return InvalidMessage here rather than LegacyCiphertextVersion; the Signal
         // Android app treats LegacyCiphertextVersion as a structural issue rather than a retryable
         // one, and won't cause the sender and receiver to move over to a PQXDH session.
@@ -130,7 +131,7 @@ async fn process_prekey_impl(
     // Retrieve Bob's Kyber prekey (post-quantum)
     let our_kyber_pre_key_pair = if let Some(kyber_pre_key_id) = message.kyber_pre_key_id() {  
         kyber_prekey_store
-            .get_kyber_pre_key(kyber_pre_key_id)
+            .get_kyber_pre_key(kyber_pre_key_id) // Defined in protocol.rs
             .await?
             .key_pair()?
     } else {

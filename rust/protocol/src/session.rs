@@ -172,7 +172,7 @@ async fn process_prekey_impl(
         kyber_ciphertext,        // Alice's Kyber ciphertext  
     );
 
-    let mut new_session = ratchet::initialize_bob_session(&parameters)?;    // ratchet.rs
+    let mut new_session = ratchet::initialize_bob_session(&parameters)?;    // Defined in ratchet.rs
 
     // Bob & Alice's device IDs
     new_session.set_local_registration_id(identity_store.get_local_registration_id().await?);
@@ -251,6 +251,7 @@ pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
         parameters.set_their_one_time_pre_key(key);
     }
 
+    // Defined in ratchet.rs
     let mut session = ratchet::initialize_alice_session(&parameters, csprng)?;  // Compute shared secrets w/ X3DH and PQ Kyber keys
 
     // Debugging

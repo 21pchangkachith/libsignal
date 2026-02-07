@@ -351,6 +351,7 @@ type NativeFunctions = {
   SessionRecord_ArchiveCurrentState: (sessionRecord: Wrapper<SessionRecord>) => void;
   SessionRecord_HasUsableSenderChain: (s: Wrapper<SessionRecord>, now: Timestamp) => boolean;
   SessionRecord_CurrentRatchetKeyMatches: (s: Wrapper<SessionRecord>, key: Wrapper<PublicKey>) => boolean;
+  SessionRecord_GetSAS: (s: Wrapper<SessionRecord>) => number;
   SessionRecord_Deserialize: (data: Uint8Array) => SessionRecord;
   SessionRecord_Serialize: (obj: Wrapper<SessionRecord>) => Uint8Array;
   SessionRecord_GetLocalRegistrationId: (obj: Wrapper<SessionRecord>) => number;
@@ -903,6 +904,7 @@ const { registerErrors,
   SessionRecord_ArchiveCurrentState,
   SessionRecord_HasUsableSenderChain,
   SessionRecord_CurrentRatchetKeyMatches,
+  SessionRecord_GetSAS,
   SessionRecord_Deserialize,
   SessionRecord_Serialize,
   SessionRecord_GetLocalRegistrationId,
@@ -1457,6 +1459,7 @@ export { registerErrors,
   SessionRecord_ArchiveCurrentState,
   SessionRecord_HasUsableSenderChain,
   SessionRecord_CurrentRatchetKeyMatches,
+  SessionRecord_GetSAS,
   SessionRecord_Deserialize,
   SessionRecord_Serialize,
   SessionRecord_GetLocalRegistrationId,

@@ -991,6 +991,11 @@ fn SessionRecord_CurrentRatchetKeyMatches(s: &SessionRecord, key: &PublicKey) ->
     s.current_ratchet_key_matches(key)
 }
 
+#[bridge_fn]
+fn SessionRecord_GetSAS(s: &SessionRecord) -> Result<u32> {
+    s.get_sas()
+}
+
 bridge_deserialize!(SessionRecord::deserialize);
 bridge_get!(SessionRecord::serialize as Serialize -> Vec<u8>);
 bridge_get!(

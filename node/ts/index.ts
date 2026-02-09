@@ -689,6 +689,11 @@ export class SessionRecord {
   currentRatchetKeyMatches(key: PublicKey): boolean {
     return Native.SessionRecord_CurrentRatchetKeyMatches(this, key);
   }
+
+  getSAS(): number {
+    const sas = Native.SessionRecord_GetSAS(this);
+    return sas;
+  }
 }
 
 export class ServerCertificate {

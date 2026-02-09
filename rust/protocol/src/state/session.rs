@@ -145,6 +145,7 @@ impl SessionState {
         root_key: &RootKey,
         alice_base_key: &PublicKey,
         pq_ratchet_state: spqr::SerializedState,
+        sas: u32
     ) -> Self {
         Self {
             session: SessionStructure {
@@ -161,6 +162,7 @@ impl SessionState {
                 local_registration_id: 0,
                 alice_base_key: alice_base_key.serialize().into_vec(),
                 pq_ratchet_state,
+                sas
             },
         }
     }
@@ -895,6 +897,20 @@ impl SessionRecord {
             Some(session) => Ok(&session.sender_ratchet_key()? == key),
             None => Ok(false),
         }
+    }
+
+    pub fn get_sas(
+            &self,
+    ) -> Result<u32, SignalProtocolError> {
+        Ok(self
+            .session_state()
+            .ok_or_else(|| {
+                SignalProtocolError::InvalidState(
+                    "get_sas",
+                    "No current session".into(),
+                )
+            })?
+            .session.sas)
     }
 
     pub fn get_kyber_ciphertext(&self) -> Result<Option<&Vec<u8>>, SignalProtocolError> {

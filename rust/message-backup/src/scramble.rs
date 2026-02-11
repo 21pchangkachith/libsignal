@@ -228,8 +228,9 @@ impl Visit<Scrambler> for proto::AccountData {
             svrPin,
             bioText,
             bioEmoji,
-            special_fields: _,
+            keyTransparencyData,
             androidSpecificSettings: _,
+            special_fields: _,
         } = self;
 
         profileKey.randomize(&mut visitor.rng);
@@ -250,6 +251,7 @@ impl Visit<Scrambler> for proto::AccountData {
         if !bioEmoji.is_empty() {
             *bioEmoji = REPLACEMENT_EMOJI.to_string();
         }
+        keyTransparencyData.randomize(&mut visitor.rng);
     }
 }
 
@@ -310,6 +312,7 @@ impl Visit<Scrambler> for proto::account_data::AccountSettings {
             screenLockTimeoutMinutes: _,
             pinReminders: _,
             allowSealedSenderFromAnyone: _,
+            allowAutomaticKeyVerification: _,
             special_fields: _,
         } = self;
 
@@ -481,6 +484,7 @@ impl Visit<Scrambler> for proto::Contact {
             hideStory: _,
             identityKey,
             identityState: _,
+            keyTransparencyData,
             registration,
             nickname,
             systemGivenName,
@@ -530,6 +534,7 @@ impl Visit<Scrambler> for proto::Contact {
         systemFamilyName.randomize(&mut visitor.rng);
         systemNickname.randomize(&mut visitor.rng);
         note.randomize(&mut visitor.rng);
+        keyTransparencyData.randomize(&mut visitor.rng);
     }
 }
 
@@ -749,7 +754,6 @@ impl Visit<Scrambler> for proto::CallLink {
     fn accept(&mut self, visitor: &mut Scrambler) {
         let Self {
             rootKey,
-            epoch,
             adminKey,
             name,
             restrictions: _,
@@ -757,7 +761,6 @@ impl Visit<Scrambler> for proto::CallLink {
             special_fields: _,
         } = self;
         rootKey.randomize(&mut visitor.rng);
-        epoch.randomize(&mut visitor.rng);
         adminKey.randomize(&mut visitor.rng);
         name.randomize(&mut visitor.rng);
     }

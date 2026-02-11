@@ -1,5 +1,3 @@
-v0.86.14
+v0.87.1
 
-- TypeScript: Fix accidentally-lax typing for the non-deprecated overload of `Net.setRemoteConfig`.
-- Upgrade MSRV to 1.88
-- Backup validator: validate group member labels
+- Make ROOT_KEY_MAX_BYTES_FOR_SHO visible to the outside world

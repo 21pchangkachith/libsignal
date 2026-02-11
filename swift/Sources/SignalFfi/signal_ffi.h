@@ -37,6 +37,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 #define SignalAes256GcmDecryption_NONCE_SIZE SignalNONCE_SIZE
 
+#define SignalCallLinkSecretParams_ROOT_KEY_MAX_BYTES_FOR_SHO 16
+
 #define SignalNUM_AUTH_CRED_ATTRIBUTES 3
 
 #define SignalNUM_PROFILE_KEY_CRED_ATTRIBUTES 4
@@ -2324,8 +2326,6 @@ SignalFfiError *signal_provisioning_chat_connection_init_listener(SignalConstPoi
 
 SignalFfiError *signal_publickey_clone(SignalMutPointerPublicKey *new_obj, SignalConstPointerPublicKey obj);
 
-SignalFfiError *signal_publickey_compare(int32_t *out, SignalConstPointerPublicKey key1, SignalConstPointerPublicKey key2);
-
 SignalFfiError *signal_publickey_deserialize(SignalMutPointerPublicKey *out, SignalBorrowedBuffer data);
 
 SignalFfiError *signal_publickey_destroy(SignalMutPointerPublicKey p);
@@ -2685,6 +2685,8 @@ SignalFfiError *signal_tokio_async_context_cancel(SignalConstPointerTokioAsyncCo
 SignalFfiError *signal_tokio_async_context_destroy(SignalMutPointerTokioAsyncContext p);
 
 SignalFfiError *signal_tokio_async_context_new(SignalMutPointerTokioAsyncContext *out);
+
+SignalFfiError *signal_unauthenticated_chat_connection_account_exists(SignalCPromisebool *promise, SignalConstPointerTokioAsyncContext async_runtime, SignalConstPointerUnauthenticatedChatConnection chat, const SignalServiceIdFixedWidthBinaryBytes *account);
 
 SignalFfiError *signal_unauthenticated_chat_connection_connect(SignalCPromiseMutPointerUnauthenticatedChatConnection *promise, SignalConstPointerTokioAsyncContext async_runtime, SignalConstPointerConnectionManager connection_manager, SignalBorrowedBytestringArray languages);
 

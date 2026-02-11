@@ -669,7 +669,7 @@ For more information on this, and how to apply and follow the GNU AGPL, see
 
 ```
 
-## libsignal-account-keys, attest, libsignal-node, signal-neon-futures, libsignal-bridge, libsignal-bridge-macros, libsignal-bridge-testing, libsignal-bridge-types, libsignal-core, signal-crypto, device-transfer, libsignal-keytrans, signal-media, libsignal-message-backup, libsignal-message-backup-macros, libsignal-net, libsignal-net-chat, libsignal-net-infra, poksho, libsignal-protocol, libsignal-svrb, usernames, zkcredential, zkgroup
+## libsignal-account-keys, attest, libsignal-node, signal-neon-futures, libsignal-bridge, libsignal-bridge-macros, libsignal-bridge-testing, libsignal-bridge-types, libsignal-core, signal-crypto, device-transfer, libsignal-keytrans, signal-media, libsignal-message-backup, libsignal-message-backup-macros, libsignal-net, libsignal-net-chat, libsignal-net-grpc, libsignal-net-infra, poksho, libsignal-protocol, libsignal-svrb, usernames, zkcredential, zkgroup
 
 ```
 GNU AFFERO GENERAL PUBLIC LICENSE
@@ -4634,7 +4634,7 @@ DEALINGS IN THE SOFTWARE.
 
 ```
 
-## bytes 1.11.0
+## bytes 1.11.1
 
 ```
 Copyright (c) 2018 Carl Lerche
@@ -5823,7 +5823,7 @@ DEALINGS IN THE SOFTWARE.
 
 ```
 
-## num-conv 0.1.0
+## num-conv 0.2.0
 
 ```
 Copyright (c) 2023 Jacob Pratt
@@ -5923,7 +5923,7 @@ SOFTWARE.
 
 ```
 
-## tonic 0.14.2
+## tonic-build 0.14.2, tonic-prost-build 0.14.2, tonic-prost 0.14.2, tonic 0.14.2
 
 ```
 Copyright (c) 2025 Lucio Franco
@@ -5973,7 +5973,7 @@ SOFTWARE.
 
 ```
 
-## time-core 0.1.6, time 0.3.44
+## time-core 0.1.8, time 0.3.47
 
 ```
 Copyright (c) Jacob Pratt et al.

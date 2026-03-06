@@ -40,6 +40,7 @@ mod session_cipher;
 mod state;
 mod storage;
 mod timestamp;
+pub mod saas; // placeholder protocol functions, allows for use::crate::saas 
 
 use error::Result;
 pub use error::SignalProtocolError;

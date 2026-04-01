@@ -14,7 +14,7 @@ use crate::{
     CiphertextMessageType, Direction, IdentityKey, IdentityKeyStore, KeyPair, KyberPreKeyId,
     KyberPreKeyStore, PreKeyBundle, PreKeyId, PreKeySignalMessage, PreKeyStore, ProtocolAddress,
     Result, SessionRecord, SessionStore, SignalProtocolError, SignedPreKeyId, SignedPreKeyStore,
-    ratchet,
+    ratchet, SignalMessage
 };
 
 pub struct PreKeysUsed {
@@ -58,7 +58,7 @@ pub async fn process_prekey<'a>(
     signed_prekey_store: &dyn SignedPreKeyStore,    // Holds Bob's signed EC prekeys (SPK)
     kyber_prekey_store: &dyn KyberPreKeyStore,      // Holds Bob's PQ Kyber prekeys
                                                     // Defined across state/, storage/, kem.rs
-                                                    // Paper: iskr, str
+                                                    // Paper: iskr, str     
 ) -> Result<(Option<PreKeysUsed>, IdentityToSave<'a>)> {
     let their_identity_key = message.identity_key();    // Extract Alice's identity public key ipks
 

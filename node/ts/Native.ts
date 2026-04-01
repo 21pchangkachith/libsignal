@@ -42,6 +42,7 @@ export type ResponseAndDebugInfo = {
   debugInfo: ChatServiceDebugInfo;
 };
 
+
 export type SealedSenderMultiRecipientMessageRecipient = {
   deviceIds: number[];
   registrationIds: number[];
@@ -352,6 +353,9 @@ type NativeFunctions = {
   SessionRecord_HasUsableSenderChain: (s: Wrapper<SessionRecord>, now: Timestamp) => boolean;
   SessionRecord_CurrentRatchetKeyMatches: (s: Wrapper<SessionRecord>, key: Wrapper<PublicKey>) => boolean;
   SessionRecord_GetSAS: (s: Wrapper<SessionRecord>) => number;
+  SessionRecord_GetVTS: (s: Wrapper<SessionRecord>) => any;
+  PvrfDemo_ComputeZb: (context: Uint8Array, nonce: Uint8Array) => Uint8Array;
+  PvrfDemo_ComputeSas: (nonce16: Uint8Array, zb16: Uint8Array) => Uint8Array;
   SessionRecord_Deserialize: (data: Uint8Array) => SessionRecord;
   SessionRecord_Serialize: (obj: Wrapper<SessionRecord>) => Uint8Array;
   SessionRecord_GetLocalRegistrationId: (obj: Wrapper<SessionRecord>) => number;
@@ -905,6 +909,9 @@ const { registerErrors,
   SessionRecord_HasUsableSenderChain,
   SessionRecord_CurrentRatchetKeyMatches,
   SessionRecord_GetSAS,
+  SessionRecord_GetVTS,
+  PvrfDemo_ComputeZb,
+  PvrfDemo_ComputeSas,
   SessionRecord_Deserialize,
   SessionRecord_Serialize,
   SessionRecord_GetLocalRegistrationId,
@@ -1460,6 +1467,9 @@ export { registerErrors,
   SessionRecord_HasUsableSenderChain,
   SessionRecord_CurrentRatchetKeyMatches,
   SessionRecord_GetSAS,
+  SessionRecord_GetVTS,
+  PvrfDemo_ComputeZb,
+  PvrfDemo_ComputeSas,
   SessionRecord_Deserialize,
   SessionRecord_Serialize,
   SessionRecord_GetLocalRegistrationId,

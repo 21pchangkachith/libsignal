@@ -15,6 +15,8 @@ use libsignal_protocol::*;
 use rand::TryRngCore as _;
 use static_assertions::const_assert_eq;
 use uuid::Uuid;
+use curve25519_dalek::ristretto::RistrettoPoint;
+use curve25519_dalek::scalar::Scalar;
 
 use crate::support::*;
 use crate::*;
@@ -67,6 +69,27 @@ fn HKDF_DeriveSecrets(
             SignalProtocolError::InvalidArgument(format!("output too long ({output_length})"))
         })?;
     Ok(buffer)
+}
+
+#[bridge_fn]
+fn PvrfDemo_ComputeZb(context: Box<[u8]>, nonce: Box<[u8]>) -> Result<Vec<u8>> {
+    let zb = libsignal_protocol::pvrf_demo::compute_zb_demo(&context, &nonce); // [u8;16]
+    Ok(zb.to_vec())
+}
+
+#[bridge_fn]
+fn PvrfDemo_ComputeSas(nonce: Box<[u8]>, zb: Box<[u8]>) -> Result<Vec<u8>> {
+    // Slice/pad to 16 bytes (no error throwing)
+    let mut n = [0u8; 16];
+    let mut z = [0u8; 16];
+
+    let n_take = std::cmp::min(16, nonce.len());
+    let z_take = std::cmp::min(16, zb.len());
+    n[..n_take].copy_from_slice(&nonce[..n_take]);
+    z[..z_take].copy_from_slice(&zb[..z_take]);
+
+    let sas = libsignal_protocol::pvrf_demo::compute_sas_demo(&n, &z); // [u8;16]
+    Ok(sas.to_vec())
 }
 
 // Alternate implementation to fill an existing buffer.
@@ -994,6 +1017,54 @@ fn SessionRecord_CurrentRatchetKeyMatches(s: &SessionRecord, key: &PublicKey) ->
 #[bridge_fn]
 fn SessionRecord_GetSAS(s: &SessionRecord) -> Result<u32> {
     s.get_sas()
+}
+
+#[bridge_fn]
+fn SessionRecord_GetVTS(s: &SessionRecord) -> Result<Vec<u8>> {
+    let (A, B, (s1, (s2_1, s2_2)), bytes1, bytes2, r1, r2) = s.get_vts()?;
+
+    // serialize each element into bytes
+    let mut out = Vec::new();
+    out.extend(A.compress().as_bytes());      // 32 bytes
+    out.extend(B.compress().as_bytes());      // 32 bytes
+    out.extend(s1.to_bytes());                // 32 bytes
+    out.extend(s2_1.to_bytes());              // 32 bytes
+    out.extend(s2_2.to_bytes());              // 32 bytes
+
+    // lengths for variable-length byte arrays
+    out.extend(&(bytes1.len() as u32).to_le_bytes());
+    out.extend(&bytes1);
+    out.extend(&(bytes2.len() as u32).to_le_bytes());
+    out.extend(&bytes2);
+
+    out.extend(r1.to_bytes());
+    out.extend(r2.to_bytes());
+
+    Ok(out)
+}
+
+#[bridge_fn]
+fn SessionRecord_GetBob_Response(s: &SessionRecord) -> Result<Vec<u8>> {
+    let (A, B, (s1, (s2_1, s2_2)), bytes1, bytes2, r1, r2) = s.get_bob_response()?;
+
+    // serialize each element into bytes
+    let mut out = Vec::new();
+    out.extend(A.compress().as_bytes());      // 32 bytes
+    out.extend(B.compress().as_bytes());      // 32 bytes
+    out.extend(s1.to_bytes());                // 32 bytes
+    out.extend(s2_1.to_bytes());              // 32 bytes
+    out.extend(s2_2.to_bytes());              // 32 bytes
+
+    // lengths for variable-length byte arrays
+    out.extend(&(bytes1.len() as u32).to_le_bytes());
+    out.extend(&bytes1);
+    out.extend(&(bytes2.len() as u32).to_le_bytes());
+    out.extend(&bytes2);
+
+    out.extend(r1.to_bytes());
+    out.extend(r2.to_bytes());
+
+    Ok(out)
 }
 
 bridge_deserialize!(SessionRecord::deserialize);

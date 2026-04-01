@@ -64,8 +64,10 @@ message SessionStructure {
   reserved 12; // no longer used
   bytes          alice_base_key            = 13;
   bytes          pq_ratchet_state          = 15;
-  u32            sas                       = 16;
-  // Next index: 20
+  uint32            sas                       = 16;
+  bytes             vts                       = 17;
+  bytes             bob_response              = 18;
+  // Next index: 25
 }
 
 message RecordStructure {

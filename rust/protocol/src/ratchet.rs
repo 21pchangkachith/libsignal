@@ -531,110 +531,82 @@ fn read_u32_le(input: &[u8], offset: &mut usize) -> Result<u32> {
     Ok(u32::from_le_bytes(arr))
 }
 
-fn read_bytes<'a>(input: &'a [u8], offset: &mut usize, len: usize) -> Result<&'a [u8]> {
-    if *offset + len > input.len() {
-        return Err(SignalProtocolError::InvalidArgument(
-            "buffer too short reading bytes".to_string(),
-        ));
-    }
-    let out = &input[*offset..*offset + len];
-    *offset += len;
-    Ok(out)
-}
-
-fn read_scalar(input: &[u8], offset: &mut usize) -> Result<Scalar> {
-    let bytes = read_bytes(input, offset, 32)?;
-    let mut arr = [0u8; 32];
-    arr.copy_from_slice(bytes);
-
-    Option::<Scalar>::from(Scalar::from_canonical_bytes(arr)).ok_or_else(|| {
-        SignalProtocolError::InvalidArgument("invalid scalar".to_string())
-    })
-}
-
-fn read_point(input: &[u8], offset: &mut usize) -> Result<RistrettoPoint> {
-    let bytes = read_bytes(input, offset, 32)?;
-    let mut arr = [0u8; 32];
-    arr.copy_from_slice(bytes);
-
-    CompressedRistretto(arr).decompress().ok_or_else(|| {
-        SignalProtocolError::InvalidArgument("invalid ristretto point".to_string())
-    })
-}
-
 pub fn pvrf_verify_from_session_data(
     vts_bytes: &[u8],
     bob_response_bytes: &[u8],
 ) -> Result<(bool, Vec<u8>)> {
+    type Tau = (Scalar, (Scalar, Scalar));
+    type Vt = (RistrettoPoint, RistrettoPoint, Tau);
+    type Vts = (Vt, Vec<u8>, Vec<u8>, Scalar, Scalar);
+    type BobResponse = (
+        Vec<u8>,
+        Vec<u8>,
+        Vt,
+        Vec<u8>,
+        (RistrettoPoint, RistrettoPoint),
+        Scalar,
+        Scalar,
+    );
 
-    // ------------------ Parse VTS ------------------
-    let mut off = 0;
+    let ((h, hprime, (c, (s1, s2))), vk, x, alpha, beta): Vts =
+        bincode::deserialize(vts_bytes).map_err(|e| {
+            SignalProtocolError::InvalidArgument(format!(
+                "failed to deserialize vts: {e}"
+            ))
+        })?;
 
-    let _h = read_point(vts_bytes, &mut off)?;
-    let _hprime = read_point(vts_bytes, &mut off)?;
-    let _s1 = read_scalar(vts_bytes, &mut off)?;
-    let _s2_1 = read_scalar(vts_bytes, &mut off)?;
-    let _s2_2 = read_scalar(vts_bytes, &mut off)?;
+    let (
+        bob_vk,
+        bob_x,
+        (bob_h, bob_hprime, (bob_c, (bob_s1, bob_s2))),
+        z,
+        (w, v),
+        bob_c_sent,
+        bob_computed_c,
+    ): BobResponse = bincode::deserialize(bob_response_bytes).map_err(|e| {
+        SignalProtocolError::InvalidArgument(format!(
+            "failed to deserialize bob response: {e}"
+        ))
+    })?;
 
-    let vk_len = read_u32_le(vts_bytes, &mut off)? as usize;
-    let vk_bytes = read_bytes(vts_bytes, &mut off, vk_len)?.to_vec();
-
-    let x_len = read_u32_le(vts_bytes, &mut off)? as usize;
-    let x_bytes = read_bytes(vts_bytes, &mut off, x_len)?.to_vec();
-
-    let alpha = read_scalar(vts_bytes, &mut off)?;
-    let beta = read_scalar(vts_bytes, &mut off)?;
-
-    // ------------------ Parse Bob Response ------------------
-    let mut off_b = 0;
-
-    let bob_vk_len = read_u32_le(bob_response_bytes, &mut off_b)? as usize;
-    let bob_vk_bytes = read_bytes(bob_response_bytes, &mut off_b, bob_vk_len)?.to_vec();
-
-    let bob_x_len = read_u32_le(bob_response_bytes, &mut off_b)? as usize;
-    let bob_x_bytes = read_bytes(bob_response_bytes, &mut off_b, bob_x_len)?.to_vec();
-
-    let _ = read_point(bob_response_bytes, &mut off_b)?;
-    let _ = read_point(bob_response_bytes, &mut off_b)?;
-    let _ = read_scalar(bob_response_bytes, &mut off_b)?;
-    let _ = read_scalar(bob_response_bytes, &mut off_b)?;
-    let _ = read_scalar(bob_response_bytes, &mut off_b)?;
-
-    let z_len = read_u32_le(bob_response_bytes, &mut off_b)? as usize;
-    let z = read_bytes(bob_response_bytes, &mut off_b, z_len)?.to_vec();
-
-    let w = read_point(bob_response_bytes, &mut off_b)?;
-    let v = read_point(bob_response_bytes, &mut off_b)?;
-
-    let _c = read_scalar(bob_response_bytes, &mut off_b)?;
-    let _computed_c = read_scalar(bob_response_bytes, &mut off_b)?;
-
-    // ------------------ Debug checks ------------------
-    if vk_bytes != bob_vk_bytes {
-        log::error!("vk mismatch");
+    if vk != bob_vk {
+        log::error!("PVRF VERIFY FAILED: vk mismatch");
         return Ok((false, z));
     }
 
-    if x_bytes != bob_x_bytes {
-        log::error!("x mismatch");
+    if x != bob_x {
+        log::error!("PVRF VERIFY FAILED: x mismatch");
         return Ok((false, z));
     }
 
-    // ------------------ Convert vk ------------------
-    if vk_bytes.len() != 32 {
-        return Err(SignalProtocolError::InvalidArgument("vk not 32 bytes".into()));
+    if h != bob_h || hprime != bob_hprime || c != bob_c || s1 != bob_s1 || s2 != bob_s2 {
+        log::error!("PVRF VERIFY FAILED: vt mismatch");
+        return Ok((false, z));
     }
 
-    let mut arr = [0u8; 32];
-    arr.copy_from_slice(&vk_bytes);
+    if bob_c_sent != bob_computed_c {
+        log::error!("PVRF VERIFY FAILED: Bob's c != computed_c");
+        return Ok((false, z));
+    }
 
-    let vk_point = CompressedRistretto(arr)
-        .decompress()
-        .ok_or_else(|| SignalProtocolError::InvalidArgument("bad vk".into()))?;
-
-    // ------------------ VERIFY ------------------
     let expected_z = hash_o(&w);
     let ok_z = z == expected_z;
+
+    let vk_point = CompressedRistretto(
+        vk.as_slice()
+            .try_into()
+            .map_err(|_| {
+                SignalProtocolError::InvalidArgument(
+                    "vk must be exactly 32 bytes".to_string(),
+                )
+            })?,
+    )
+    .decompress()
+    .ok_or_else(|| {
+        SignalProtocolError::InvalidArgument(
+            "vk is not a valid compressed Ristretto point".to_string(),
+        )
+    })?;
 
     let expected_v = (vk_point * alpha) + (w * beta);
     let ok_v = v == expected_v;
@@ -643,9 +615,10 @@ pub fn pvrf_verify_from_session_data(
 
     if ok {
         log::info!("PVRF VERIFY SUCCESS");
+        log::info!("PVRF SAS/debug z: {:?}", z);
     } else {
-        log::error!("PVRF VERIFY FAILED");
-        log::error!("ok_z={}, ok_v={}", ok_z, ok_v);
+        log::error!("PVRF VERIFY FAILED: ok_z={}, ok_v={}", ok_z, ok_v);
+        log::error!("expected_z={:?}, actual_z={:?}", expected_z, z);
     }
 
     Ok((ok, z))

@@ -16,6 +16,7 @@ use rand::TryRngCore as _;
 use static_assertions::const_assert_eq;
 use uuid::Uuid;
 use curve25519_dalek::ristretto::RistrettoPoint;
+use curve25519_dalek::ristretto::CompressedRistretto;
 use curve25519_dalek::scalar::Scalar;
 
 use crate::support::*;
@@ -1056,6 +1057,13 @@ fn SessionRecord_GetBobResponse(s: &SessionRecord) -> Result<Vec<u8>> {
     out.extend(&(x.len() as u32).to_le_bytes());
     out.extend(x);
     out.extend(h.compress().as_bytes());
+    log::info!("h as normal: {:?}", h.compress());
+    log::info!("h as bytes: {:?}", h.compress().as_bytes());
+    let temp_h_compressed = h.compress();
+    let temp_h_bytes = temp_h_compressed.as_bytes();
+    //reform h from bytes to check that it works correctly
+    let h_from_bytes = CompressedRistretto::from_slice(temp_h_bytes);
+    log::info!("h from bytes: {:?}", h_from_bytes);
     out.extend(hprime.compress().as_bytes());
     out.extend(s1.to_bytes());
     out.extend(s2_1.to_bytes());
@@ -1066,6 +1074,11 @@ fn SessionRecord_GetBobResponse(s: &SessionRecord) -> Result<Vec<u8>> {
     out.extend(w.compress().as_bytes());
     out.extend(v.compress().as_bytes());
     out.extend(c.to_bytes());
+    let temp_c = c.to_bytes();
+    let temp_c_from_bytes = Scalar::from_canonical_bytes(temp_c).unwrap();
+    log::info!("c as normal: {:?}", c);
+    log::info!("c as bytes: {:?}", temp_c);
+    log::info!("c from bytes: {:?}", temp_c_from_bytes);
     out.extend(computed_c.to_bytes());
 
 

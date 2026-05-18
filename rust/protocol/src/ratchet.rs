@@ -27,6 +27,9 @@ use crate::protocol::CIPHERTEXT_MESSAGE_CURRENT_VERSION;
 use crate::state::SessionState;
 use crate::{KeyPair, Result, SessionRecord, SignalProtocolError, consts};
 
+use std::fs;
+use std::path::PathBuf;
+
 type InitialPQRKey = [u8; 32]; // Initial key for PQ Ratchet
 
 fn derive_keys(secret_input: &[u8]) -> (RootKey, ChainKey, InitialPQRKey) {
@@ -108,6 +111,12 @@ pub fn generator_g() -> RistrettoPoint {
     RISTRETTO_BASEPOINT_POINT
 }
 
+pub fn sample_random_zp<R: Rng + CryptoRng>(csprng: &mut R) -> Scalar {
+    let mut bytes = [0u8; 64];
+    csprng.fill(&mut bytes);
+    Scalar::from_bytes_mod_order_wide(&bytes)
+}
+
 pub fn hash_generic_zp(input: &[u8]) -> Scalar {
     let hash = Sha512::digest(input);
     Scalar::from_bytes_mod_order_wide(&hash.into())
@@ -128,7 +137,7 @@ pub fn hash_fs(vk: &RistrettoPoint, x: &[u8], h: &RistrettoPoint, h_prime: &Rist
     Scalar::from_bytes_mod_order_wide(&hash.into())
 }
 
-fn hash_to_G(domain_sep: &[u8], input: &[u8]) -> RistrettoPoint {
+fn hash_to_g(domain_sep: &[u8], input: &[u8]) -> RistrettoPoint {
     let mut hasher = Sha512::new();
     hasher.update(domain_sep);
     hasher.update(input);
@@ -138,19 +147,19 @@ fn hash_to_G(domain_sep: &[u8], input: &[u8]) -> RistrettoPoint {
 pub fn hash_i(vk: &RistrettoPoint , x: &[u8]) -> RistrettoPoint {
     let compressed = vk.compress();
     let compressed_vecu8 = compressed.as_bytes().to_vec();
-    hash_to_G(b"hash_i", &encode(&compressed_vecu8, x))
+    hash_to_g(b"hash_i", &encode(&compressed_vecu8, x))
 }
 
 pub fn hash_a(vk: &RistrettoPoint, x: &[u8]) -> RistrettoPoint {
     let compressed = vk.compress();
     let compressed_vecu8 = compressed.as_bytes().to_vec();
-    hash_to_G(b"hash_a", &encode(&compressed_vecu8, x))
+    hash_to_g(b"hash_a", &encode(&compressed_vecu8, x))
 }
 
 pub fn hash_b(vk: &RistrettoPoint, x: &[u8]) -> RistrettoPoint {
     let compressed = vk.compress();
     let compressed_vecu8 = compressed.as_bytes().to_vec();
-    hash_to_G(b"hash_b", &encode(&compressed_vecu8, x))
+    hash_to_g(b"hash_b", &encode(&compressed_vecu8, x))
 }
 
 pub fn hash_o(point: &RistrettoPoint) -> Vec<u8> {
@@ -161,10 +170,6 @@ pub fn hash_o(point: &RistrettoPoint) -> Vec<u8> {
     hash[..3].to_vec()
 }
 
-pub fn point_to_bytes(point: &RistrettoPoint) -> Vec<u8> {
-    point.compress().as_bytes().to_vec()
-}
-
 // ***X3DH Key Agreement for Alice***
 pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
     parameters: &AliceSignalProtocolParameters, // Contains Alice's ik and eph keys, Bob's ik, signed prekey, otpk, PQ prekey
@@ -173,8 +178,14 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
     let local_identity = parameters.our_identity_key_pair().identity_key(); // Alice's ipk
 
     let mut secrets = Vec::with_capacity(32 * 6);
-
     secrets.extend_from_slice(&[0xFFu8; 32]); // "discontinuity bytes"
+
+    let mut x = Vec::with_capacity(32 * 6);
+    x.extend_from_slice(parameters.our_identity_key_pair().public_key().public_key_bytes());
+    x.extend_from_slice(parameters.their_identity_key().public_key().public_key_bytes());
+    x.extend_from_slice(parameters.our_base_key_pair().public_key.public_key_bytes());
+    
+
 
     // Below are the DH operations for X3DH
     let our_base_private_key = parameters.our_base_key_pair().private_key;
@@ -206,14 +217,17 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
     if let Some(their_one_time_prekey) = parameters.their_one_time_pre_key() {
         secrets
             .extend_from_slice(&our_base_private_key.calculate_agreement(their_one_time_prekey)?);
-        let mut bytes = their_one_time_prekey.public_key_bytes().to_vec();
         k = hash_generic_zp(their_one_time_prekey.public_key_bytes());
-        vk = g * k; //RistrettoPoint::hash_from_bytes::<Sha512>(&bytes);
+        vk = g * k; 
+        x.extend_from_slice(their_one_time_prekey.public_key_bytes());
     } else {
-        let mut bytes = parameters.their_signed_pre_key().public_key_bytes().to_vec();
         k = hash_generic_zp(parameters.their_signed_pre_key().public_key_bytes());
-        vk = g * k;//RistrettoPoint::hash_from_bytes::<Sha512>(&bytes);
+        vk = g * k;
     }
+    x.extend_from_slice(parameters.their_signed_pre_key().public_key_bytes());
+    let mut alice_sas_contribution_salt = [0u8; 3];
+    csprng.fill(&mut alice_sas_contribution_salt);
+    let alice_sas_contribution_salt = alice_sas_contribution_salt.to_vec();
 
     // Uses Bob's Kyber prekey to perform key encapsulation (KEM)
     // ss = shared secret from Kyber, ct = ciphertext sent to Bob
@@ -223,36 +237,46 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
         ct
     };
 
-
-    //step 0.5, parameters
-    //x = secrets 
     
 
     //sample alpha, beta from the set of real integers
     //step 1, page 11, preverify
-    let alpha = hash_generic_zp(b"alpha");
-    let beta = hash_generic_zp(b"beta");
-    let h = alpha * g + beta * hash_i(&vk, &secrets);    
-    let hprime = alpha * hash_a(&vk, &secrets) + beta * hash_b(&vk, &secrets);
+    let alpha = sample_random_zp(csprng);
+    let beta = sample_random_zp(csprng);
+    let h = alpha * g + beta * hash_i(&vk, &x);    
+    let hprime = alpha * hash_a(&vk, &x) + beta * hash_b(&vk, &x);
 
     //step 2
-    let r1 = hash_generic_zp(b"r1");
-    let r2 = hash_generic_zp(b"r2");
+    let r1 = sample_random_zp(csprng);
+    let r2 = sample_random_zp(csprng);
     // scalar * point = point to the power of scaler in paper
-    let eta = (g * r1) + (hash_i(&vk, &secrets) * r2);
-    let etaprime = (hash_a(&vk, &secrets) * r1) + (hash_b(&vk, &secrets) * r2);
-    let c = hash_fs(&vk, &secrets, &h, &hprime, &eta, &etaprime);
+    let eta = (g * r1) + (hash_i(&vk, &x) * r2);
+    let etaprime = (hash_a(&vk, &x) * r1) + (hash_b(&vk, &x) * r2);
+    let c = hash_fs(&vk, &x, &h, &hprime, &eta, &etaprime);
     //s values should be mod p
     let s = (r1 - c * alpha, r2 - c * beta);
     let tau = (c,s);
 
     //step 3
     let vt = (h, hprime, tau);
-    let vts = (vt, vk, secrets.clone(), alpha, beta);
+    let vts = (vt, vk, secrets.clone(), alpha, beta, alice_sas_contribution_salt.clone());
+    let redacted_vts_for_bob = (vt, alice_sas_contribution_salt.clone());
 
-    let pvrf_ciphertext =  bincode::serialize(&vts).unwrap().into_boxed_slice();
+    let pvrf_ciphertext =  bincode::serialize(&redacted_vts_for_bob).unwrap().into_boxed_slice();
     //output vt, store vts
 
+
+
+    // FOR MCS DEMO PURPOSES ONLY
+    let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
+    path.push("mcs_stored_alice_pvrf.txt");
+    let pvrf_ciphertext_from_file = if path.exists() {
+        log::info!("it existed on desktop");
+        Some(fs::read(&path).unwrap().into_boxed_slice())
+    } else {
+        Some(pvrf_ciphertext)
+    };
+    let pvrf_ciphertext = pvrf_ciphertext_from_file.expect("");
 
 
     let (root_key, chain_key, pqr_key) = derive_keys(&secrets);
@@ -293,7 +317,7 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
         &sending_chain_root_key,
         &parameters.our_base_key_pair().public_key,
         pqr_state,
-        32, //dummy sas
+        None,
         Some(bincode::serialize(&vts).unwrap()),
         None,
     )
@@ -326,7 +350,7 @@ pub(crate) fn initialize_bob_session(
 
     secrets.extend_from_slice(&[0xFFu8; 32]); // "discontinuity bytes"
 
-    // DH agreement computations
+    // concatenation for transcript
     // Bob's spk * Alice's ik
     secrets.extend_from_slice(
         &parameters
@@ -358,14 +382,16 @@ pub(crate) fn initialize_bob_session(
     //step 0: "retrieve" parameters k, vk
     // fresh genning them for rapid dev right now
     let g = generator_g();
-    let k ;//= hash_generic_zp(b"placeholder fresh k for vk");
-    let vk ;//= point_to_bytes(&(g * k));
-    let kptr;
-    let x;
-    let their_vts;
-    let vts_response;
-    let bob_response;
+    let k ;
+    let vk ;
+    let mut x = Vec::with_capacity(32 * 6);
+    let mut bob_response;
+    let true_sas: Option<Vec<u8>>;
     //let vt;
+
+    x.extend_from_slice(parameters.their_identity_key().public_key().public_key_bytes());
+    x.extend_from_slice(parameters.our_identity_key_pair().public_key().public_key_bytes());
+    x.extend_from_slice(parameters.their_base_key().public_key_bytes());
 
 
 
@@ -376,19 +402,15 @@ pub(crate) fn initialize_bob_session(
                 .private_key
                 .calculate_agreement(parameters.their_base_key())?,
         );
-        kptr = our_one_time_pre_key_pair;
-        //let mut bytes = our_one_time_pre_key_pair.public_key.public_key_bytes().to_vec();
         k = hash_generic_zp(our_one_time_pre_key_pair.public_key.public_key_bytes());
         vk = g * k;
+        x.extend_from_slice(our_one_time_pre_key_pair.public_key.public_key_bytes());
     } else {
-        //let mut bytes = parameters.our_signed_pre_key_pair().public_key.public_key_bytes().to_vec();
         k = hash_generic_zp(parameters.our_signed_pre_key_pair().public_key.public_key_bytes());
-        vk = g * k; //is bob meant to use his private? but how will alice know?
-
-    //      vk = their_one_time_prekey.public_key_bytes().to_vec();
-    // } else {
-    //     vk = parameters.their_signed_pre_key().public_key_bytes().to_vec();
+        vk = g * k; 
     }
+
+    x.extend_from_slice(parameters.our_signed_pre_key_pair().public_key.public_key_bytes());
 
     // Bob's Kyber secret key recovers shared PQ secret from Alice's ciphertext
     secrets.extend_from_slice(
@@ -398,7 +420,6 @@ pub(crate) fn initialize_bob_session(
             .decapsulate(parameters.their_kyber_ciphertext())?,
     );
 
-    x = &secrets;
     let their_pvrf_ciphertext = parameters.their_pvrf_ciphertext().as_ref().map(|b| b.to_vec());
     log::info!(
         "PVRF ciphertext in PreKey message as Bob: {}",
@@ -411,43 +432,32 @@ pub(crate) fn initialize_bob_session(
         log::info!("PVRF ciphertext bytes: {:?}", bytes);
         let (
             (h, hprime, (c, (s1, s2))),
-            their_vk, //should be null or unset in real
-            their_secrets, //should be null or unset in real
-            their_alpha, //should be null or unset in real
-            their_beta //should be null or unset in real
+            their_contrib_salt
         ): (
             (RistrettoPoint, RistrettoPoint, (Scalar, (Scalar, Scalar))),
-            RistrettoPoint,
-            Vec<u8>,
-            Scalar,
-            Scalar
+            Vec<u8>
         ) = bincode::deserialize(&bytes).unwrap();
         // Step 1, parse vars
         let tau = (c, (s1, s2));
         let vt = (h, hprime, tau);
-        their_vts = (vt, their_vk, their_secrets, their_alpha, their_beta);
-        vts_response = Some(bincode::serialize(&their_vts).unwrap());
 
         // Step 2
-        let hi = hash_i(&vk, x);
-        let ha = hash_a(&vk, x);
-        let hb = hash_b(&vk, x);
+        let hi = hash_i(&vk, &x);
+        let ha = hash_a(&vk, &x);
+        let hb = hash_b(&vk, &x);
 
         // η = g^s1 * Hi(vk,x)^s2 * h^c
         // η' = Ha(vk,x)^s1 * Hb(vk,x)^s2 * h'^c
         let eta = (g * (s1)) + (hi * (s2)) + h * (c);
         let etaprime = (ha * (s1)) + (hb * (s2)) + (hprime * (c));
 
-        let computed_c = hash_fs(&vk, x, &h, &hprime, &eta, &etaprime);
+        let computed_c = hash_fs(&vk, &x, &h, &hprime, &eta, &etaprime);
 
         // abort if mismatch
         log::info!("Bob computes c: {:?}, Alice's c: {:?}", computed_c, c);
         if c != computed_c {
-            //panic!("abort");
-            log::info!("THE C'S DIDNT MATCH FOR BOB, SHOULD HAVE ABORTED");
-        } else {
-            log::info!("THE C'S MATCHED FOR BOB'S SIDE");
-        }
+            log::info!("PVRF SAS-MA ERROR: Bob can't confirm Alice really generated this data");
+        } 
 
         // Step 3
         let w = hi*(k);
@@ -456,33 +466,37 @@ pub(crate) fn initialize_bob_session(
         let pi = (w, v);
 
         // Step 4
-        let response =  (vk, x.clone(), vt, z, pi, c, computed_c); //(vk, x, vt, z, pi);
+        let response =  (z.clone(), pi, c, computed_c); //(vk, x, vt, z, pi);
         bob_response = Some(bincode::serialize(&response).unwrap());
         log::info!("Bob's PVRF response: {:?}", bob_response);
         log::info!("Bob's v {:?}", (v.compress().to_bytes()));
-        log::info!("Bob computes using Alice's illegal values: {:?}", ((their_vk * their_alpha) + (w * their_beta)).compress().to_bytes());
-        // g ^ a ^ k * Hi(g ^ k, x) ^ b ^ k
-        let v_from_raw_test = g * their_alpha * k + hash_i(&(g * k), x) * their_beta * k;
-        let v_from_higher_test = their_vk * their_alpha + w * their_beta;
-        log::info!("Bob computes using v from raw: {:?}", v_from_raw_test);
-        log::info!("compressed bob's v from raw: {:?}", v_from_raw_test.compress());
-        log::info!("bytes of bob's v from raw: {:?}", v_from_raw_test.compress().to_bytes());
-        log::info!("Bob computes using v using high level values: {:?}", v_from_higher_test);
-        log::info!("compressed bob's v from higher level: {:?}", v_from_higher_test.compress());
-        log::info!("bytes of bob's v from higher level: {:?}", v_from_higher_test.compress().to_bytes());
+        true_sas = Some(
+            z.clone().iter()
+            .zip(their_contrib_salt.iter())
+            .map(|(x, y)| x ^ y)
+            .collect()
+        );
+        // FOR MCS DEMO PURPOSES ONLY
+        let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
+        path.push("mcs_stored_bob_response.txt");
+        let bob_response_from_file = if path.exists() {
+            log::info!("it existed on desktop");
+            Some(fs::read(&path).unwrap())
+        } else {
+            bob_response
+        };
 
-        //turn their_secrets into a u8 arrray
-        //log::info!("Bob computes using Alice's illegal values but from raw: {:?}", ((g * their_alpha * k + hash_i(&temp_ref, their_secrets.) * their_beta * k)).compress().to_bytes());
-        let example_decoded_bob_response: (RistrettoPoint, Vec<u8>, (RistrettoPoint, RistrettoPoint, (Scalar, (Scalar, Scalar))), Vec<u8>, (RistrettoPoint, RistrettoPoint), Scalar, Scalar)
-         =   bincode::deserialize(
-            bob_response.as_ref().unwrap()
-            )
-        .unwrap();
-        log::info!("Decoded Bob's PVRF response: {:?}", example_decoded_bob_response);
+
+        log::info!("going to try writing to desktop");
+        let unoptioned = bincode::serialize(&response).unwrap();
+        let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
+        path.push("mcs_stored_bob_response.txt");
+        let _ = fs::write(&path, unoptioned);
+        bob_response = Some(bob_response_from_file.expect(""));
     } else {
         log::info!("No PVRF ciphertext provided in PreKey message; skipping PVRF processing");
-        vts_response = None;
         bob_response = None;
+        true_sas = None;
     }
 
 
@@ -509,6 +523,8 @@ pub(crate) fn initialize_bob_session(
         ))
     })?;
 
+ 
+
     // Bob's session object
     let session = SessionState::new(
         CIPHERTEXT_MESSAGE_CURRENT_VERSION,
@@ -517,8 +533,8 @@ pub(crate) fn initialize_bob_session(
         &root_key,
         parameters.their_base_key(),
         pqr_state,
-        32, //dummy sas
-        vts_response, //should be None in real, using for logging now
+        true_sas,
+        None, 
         bob_response,
     )
     .with_sender_chain(parameters.our_ratchet_key_pair(), &chain_key);
@@ -544,54 +560,6 @@ pub fn initialize_bob_session_record(
 }
 
 use curve25519_dalek::ristretto::CompressedRistretto;
-fn read_u32_le(buf: &[u8], offset: &mut usize) -> Result<usize> {
-    if *offset + 4 > buf.len() {
-        return Err(SignalProtocolError::InvalidArgument(
-            "buffer too short reading u32".to_string(),
-        ));
-    }
-    let val = u32::from_le_bytes(buf[*offset..*offset + 4].try_into().unwrap()) as usize;
-    *offset += 4;
-    Ok(val)
-}
- 
-fn read_bytes<'a>(buf: &'a [u8], offset: &mut usize, n: usize) -> Result<&'a [u8]> {
-    if *offset + n > buf.len() {
-        return Err(SignalProtocolError::InvalidArgument(
-            "buffer too short reading bytes".to_string(),
-        ));
-    }
-    let slice = &buf[*offset..*offset + n];
-    *offset += n;
-    Ok(slice)
-}
-fn read_point(buf: &[u8], offset: &mut usize) -> Result<RistrettoPoint> {
-    let bytes = read_bytes(buf, offset, 32)?;
-    // CompressedRistretto::from_slice returns a Result in newer dalek versions,
-    // or a plain CompressedRistretto in older ones. Adjust the unwrap style to
-    // match whichever dalek version your workspace uses.
-    CompressedRistretto::from_slice(bytes)
-        .map_err(|_| SignalProtocolError::InvalidArgument(
-            "invalid compressed ristretto slice length".to_string(),
-        ))?
-        .decompress()
-        .ok_or_else(|| SignalProtocolError::InvalidArgument(
-            "ristretto point decompression failed".to_string(),
-        ))
-}
- 
-// Reconstruct a Scalar from 32 bytes — same as the snippet:
-//   let temp_c_from_bytes = Scalar::from_canonical_bytes(temp_c).unwrap();
-fn read_scalar(buf: &[u8], offset: &mut usize) -> Result<Scalar> {
-    let bytes = read_bytes(buf, offset, 32)?;
-    let arr: [u8; 32] = bytes.try_into().unwrap();
-    // from_canonical_bytes returns CtOption; use unwrap_or_else for a proper error.
-    Option::<Scalar>::from(Scalar::from_canonical_bytes(arr))
-        .ok_or_else(|| SignalProtocolError::InvalidArgument(
-            "invalid canonical scalar bytes".to_string(),
-        ))
-}
-
 pub fn pvrf_verify_from_session_data(
     vk_bytes: &[u8],
     x_bytes: &[u8],
@@ -637,6 +605,8 @@ pub fn pvrf_verify_from_session_data(
         .decompress()
         .ok_or_else(|| SignalProtocolError::InvalidArgument("vk decompression failed".to_string()))?;
     log::info!("whyyyy");
+
+
 
 
 

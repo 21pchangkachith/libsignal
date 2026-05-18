@@ -14,8 +14,10 @@ use crate::{
     CiphertextMessageType, Direction, IdentityKey, IdentityKeyStore, KeyPair, KyberPreKeyId,
     KyberPreKeyStore, PreKeyBundle, PreKeyId, PreKeySignalMessage, PreKeyStore, ProtocolAddress,
     Result, SessionRecord, SessionStore, SignalProtocolError, SignedPreKeyId, SignedPreKeyStore,
-    ratchet, SignalMessage
+    ratchet
 };
+
+use std::fs;
 
 pub struct PreKeysUsed {
     pub one_time_ec_pre_key_id: Option<PreKeyId>,
@@ -161,7 +163,13 @@ async fn process_prekey_impl(
         None
     };
 
+    log::info!("going to try writing to desktop");
     let pvrf_ciphertext = message.pvrf_ciphertext();
+    
+    let unoptioned = pvrf_ciphertext.expect("no pvrf cipherest").clone();
+    let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
+    path.push("mcs_stored_alice_pvrf.txt");
+    let _ = fs::write(&path, unoptioned);
 
     let parameters = BobSignalProtocolParameters::new(
         identity_store.get_identity_key_pair().await?,  // ipkr

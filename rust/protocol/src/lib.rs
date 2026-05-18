@@ -25,7 +25,6 @@
 mod consts;
 mod crypto;
 pub mod error;
-pub mod pvrf_demo;
 mod fingerprint;
 mod group_cipher;
 mod identity_key;
@@ -57,7 +56,7 @@ pub use libsignal_core::{
     Aci, DeviceId, Pni, ProtocolAddress, ServiceId, ServiceIdFixedWidthBinaryBytes, ServiceIdKind,
 };
 pub use protocol::{
-    CiphertextMessage, CiphertextMessageType, DecryptionErrorMessage, KyberPayload,
+    CiphertextMessage, CiphertextMessageType, DecryptionErrorMessage, KyberPayload, PvrfPayload,
     PlaintextContent, PreKeySignalMessage, SenderKeyDistributionMessage, SenderKeyMessage,
     SignalMessage, extract_decryption_error_message_from_serialized_content,
 };

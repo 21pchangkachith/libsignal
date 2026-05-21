@@ -34,6 +34,7 @@ fn init_logger() {
 // this also tests that SAS matches up in normal messaging (between alice <-> eve and bob <-> alice)
 #[test]
 fn test_pvrf_mitm_sender_receive_step_resealing() -> TestResult {
+    env_logger::try_init();
     // trivially, if eve impersonates alice/bob and does not forward to the other,
     // then the other of bob/alice could never possibly generate a SAS and the attack fails
     run(
@@ -233,13 +234,13 @@ fn test_pvrf_mitm_sender_receive_step_resealing() -> TestResult {
 
             let alice_session_with_eve = alice_store.load_session(&eve_address).await?.expect("session found");
             let (_, _, (_, (_, _)), vk, x, r1, r2, a2e_contrib_salt) = alice_session_with_eve.get_vts()?;
-            let (vk_compressed, w_compressed, v_compressed) = (vk.compress(), w.compress(), v.compress());
-            let vk_bytes = vk_compressed.as_bytes();
+            let (vk_compressed, w_compressed, v_compressed) = (vk, w, v);
+            let vk_bytes = vk_compressed.public_key_bytes();
             let x_bytes = x.as_slice();
-            let alpha_bytes: &[u8] = &r1.to_bytes()[..];
-            let beta_bytes: &[u8] = &r2.to_bytes()[..];
-            let w_bytes = w_compressed.as_bytes();
-            let v_bytes = v_compressed.as_bytes();
+            let alpha_bytes: &[u8] = &r1.serialize()[..];
+            let beta_bytes: &[u8] = &r2.serialize()[..];
+            let w_bytes = w_compressed.public_key_bytes();
+            let v_bytes = v_compressed.public_key_bytes();
             let (pvrf_verified, alice_sas_bytes) = pvrf_verify_from_session_data(vk_bytes, x_bytes, alpha_bytes, beta_bytes, w_bytes, v_bytes)?;
 
             assert_eq!(c, computed_c); //not nonsense, a real message attempt is simulated or being made to bob 
@@ -250,13 +251,13 @@ fn test_pvrf_mitm_sender_receive_step_resealing() -> TestResult {
             //...but it must be true that alice matches with eve->alice and eve->bob matches with bob
             let eve_session_with_bob = eve_store.load_session(&bob_address).await?.expect("session found");
             let (_, _, (_, (_, _)), vk, x, r1, r2, e2b_contrib_salt) = eve_session_with_bob.get_vts()?;
-            let (vk_compressed, w_compressed, v_compressed) = (vk.compress(), bob_w.compress(), bob_v.compress());
-            let vk_bytes = vk_compressed.as_bytes();
+            let (vk_compressed, w_compressed, v_compressed) = (vk, bob_w, bob_v);
+            let vk_bytes = vk_compressed.public_key_bytes();
             let x_bytes = x.as_slice();
-            let alpha_bytes: &[u8] = &r1.to_bytes()[..];
-            let beta_bytes: &[u8] = &r2.to_bytes()[..];
-            let w_bytes = w_compressed.as_bytes();
-            let v_bytes = v_compressed.as_bytes();
+            let alpha_bytes: &[u8] = &r1.serialize()[..];
+            let beta_bytes: &[u8] = &r2.serialize()[..];
+            let w_bytes = w_compressed.public_key_bytes();
+            let v_bytes = v_compressed.public_key_bytes();
             let (pvrf_verified, eve_with_bob_sas_bytes) = pvrf_verify_from_session_data(vk_bytes, x_bytes, alpha_bytes, beta_bytes, w_bytes, v_bytes)?;
 
             assert_eq!(bob_c, bob_computed_c); 
@@ -278,6 +279,7 @@ fn test_pvrf_mitm_sender_receive_step_resealing() -> TestResult {
 // Expectation: Alice should become aware of the attack
 #[test]
 fn test_pvrf_mitm_verify_step_forwarding() -> TestResult {
+        env_logger::try_init();
     // trivially, if eve impersonates alice/bob and does not forward to the other,
     // then the other of bob/alice could never possibly generate a SAS and the attack fails
     run(
@@ -339,23 +341,15 @@ fn test_pvrf_mitm_verify_step_forwarding() -> TestResult {
             .await?;
 
             assert!(alice_store.load_session(&eve_address).await?.is_some());
-            assert_eq!(
-                alice_store.session_version(&eve_address)?,
-                expected_session_version
-            );
+            assert_eq!(alice_store.session_version(&eve_address)?, expected_session_version);
 
             let original_message = "L'homme est condamné à être libre";
 
             let outgoing_message = encrypt(alice_store, &eve_address, original_message).await?;
 
-            assert_eq!(
-                outgoing_message.message_type(),
-                CiphertextMessageType::PreKey
-            );
+            assert_eq!(outgoing_message.message_type(), CiphertextMessageType::PreKey);
 
-            let incoming_message = CiphertextMessage::PreKeySignalMessage(
-                PreKeySignalMessage::try_from(outgoing_message.serialize())?,
-            );
+            let incoming_message = CiphertextMessage::PreKeySignalMessage(PreKeySignalMessage::try_from(outgoing_message.serialize())?,);
 
             let ptext = decrypt(
                 eve_store,
@@ -382,10 +376,7 @@ fn test_pvrf_mitm_verify_step_forwarding() -> TestResult {
             .await?;
             
             assert!(eve_store.load_session(&bob_address).await?.is_some());
-            assert_eq!(
-                eve_store.session_version(&bob_address)?,
-                expected_session_version
-            );
+            assert_eq!(eve_store.session_version(&bob_address)?, expected_session_version);
 
             let eve_forwarded_outgoing = encrypt(eve_store, &bob_address, original_message).await?;
 
@@ -491,14 +482,14 @@ fn test_pvrf_mitm_verify_step_forwarding() -> TestResult {
 
             let alice_session_with_eve = alice_store.load_session(&eve_address).await?.expect("session found");
             let (_, _, (_, (_, _)), vk, x, r1, r2, a2e_contrib_salt) = alice_session_with_eve.get_vts()?;
-            let (vk_compressed, w_compressed, v_compressed) = (vk.compress(), w.compress(), v.compress());
-            let vk_bytes = vk_compressed.as_bytes();
+            let (vk_compressed, w_compressed, v_compressed) = (vk, w, v);
+            let vk_bytes = vk_compressed.public_key_bytes();
             let x_bytes = x.as_slice();
             //turn u8; 32 into u8
-            let alpha_bytes: &[u8] = &r1.to_bytes()[..];
-            let beta_bytes: &[u8] = &r2.to_bytes()[..];
-            let w_bytes = w_compressed.as_bytes();
-            let v_bytes = v_compressed.as_bytes();
+            let alpha_bytes: &[u8] = &r1.serialize()[..];
+            let beta_bytes: &[u8] = &r2.serialize()[..];
+            let w_bytes = w_compressed.public_key_bytes();
+            let v_bytes = v_compressed.public_key_bytes();
             let (pvrf_verified, alice_sas_bytes) = pvrf_verify_from_session_data(vk_bytes, x_bytes, alpha_bytes, beta_bytes, w_bytes, v_bytes)?;
 
             assert_eq!(c, computed_c); //not nonsense, a real message attempt is simulated or being made to bob 
@@ -519,6 +510,7 @@ fn test_pvrf_mitm_verify_step_forwarding() -> TestResult {
 // Expectation: Bob should become aware of the attack
 #[test]
 fn test_pvrf_mitm_eval_step_forwarding() -> TestResult {
+    env_logger::try_init();
     
     run(
         |builder| {

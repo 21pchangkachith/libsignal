@@ -736,8 +736,8 @@ export class SessionRecord {
         return readBytes(len);
     }
 
-    const h = { compressed: readBytes(32) }; // RistrettoPoint compressed
-    const hprime = { compressed: readBytes(32) }; // RistrettoPoint compressed
+    const h = { compressed: readBytes(32) }; // PublicKey compressed
+    const hprime = { compressed: readBytes(32) }; // PublicKey compressed
     const s1 = readScalar();
     const s2_1 = readScalar();
     const s2_2 = readScalar();

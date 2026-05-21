@@ -19,6 +19,8 @@ derive_more = { workspace = true, features = ["from", "into", "try_from"] }
 displaydoc = { workspace = true }
 log = { workspace = true }
 rand = { workspace = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
 sha2 = { workspace = true }
 subtle = { workspace = true }
 thiserror = { workspace = true }

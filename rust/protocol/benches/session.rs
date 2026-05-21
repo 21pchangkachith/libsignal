@@ -259,13 +259,13 @@ pub fn session_encrypt_result(c: &mut Criterion) -> Result<(), SignalProtocolErr
     let (_, _, (_, (_, _)), vk, x, r1, r2, _) = alice_state.get_vts()?;
     let (_, (w, v), _, _) = bob_state.get_bob_response()?;
 
-    let (vk_compressed, w_compressed, v_compressed) = (vk.compress(), w.compress(), v.compress());
-    let vk_bytes = vk_compressed.as_bytes();
+    let (vk_compressed, w_compressed, v_compressed) = (vk, w, v);
+    let vk_bytes = vk_compressed.public_key_bytes();
     let x_bytes = x.as_slice();
-    let alpha_bytes: &[u8] = &r1.to_bytes()[..];
-    let beta_bytes: &[u8] = &r2.to_bytes()[..];
-    let w_bytes = w_compressed.as_bytes();
-    let v_bytes = v_compressed.as_bytes();
+    let alpha_bytes: &[u8] = &r1.serialize();
+    let beta_bytes: &[u8] = &r2.serialize();
+    let w_bytes = w_compressed.public_key_bytes();
+    let v_bytes = v_compressed.public_key_bytes();
     c.bench_function(
         "pvrf_verify",
         |b| {

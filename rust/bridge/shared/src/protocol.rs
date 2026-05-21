@@ -999,24 +999,24 @@ fn SessionRecord_GetSAS(s: &SessionRecord) -> Result<Vec<u8>> {
 
 #[bridge_fn]
 fn SessionRecord_GetVTS(s: &SessionRecord) -> Result<Vec<u8>> {
-    //get_vts returns Result<(RistrettoPoint, RistrettoPoint, (Scalar, (Scalar, Scalar)), RistrettoPoint, Vec<u8>, Scalar, Scalar, Vec<u8>), SignalProtocolError>
+    //get_vts returns Result<(PublicKey, PublicKey, (PrivateKey, (PrivateKey, PrivateKey)), PublicKey, Vec<u8>, PrivateKey, PrivateKey, Vec<u8>), SignalProtocolError>
     let (h, hprime, (s1, (s2_1, s2_2)), vk, x, r1, r2, contrib_salt) = s.get_vts()?;
 
     // serialize each element into bytes
     let mut out = Vec::new();
-    out.extend(h.compress().as_bytes());
-    out.extend(hprime.compress().as_bytes());
-    out.extend(s1.to_bytes());
-    out.extend(s2_1.to_bytes());
-    out.extend(s2_2.to_bytes());
+    out.extend(h.public_key_bytes());
+    out.extend(hprime.public_key_bytes());
+    out.extend(s1.serialize());
+    out.extend(s2_1.serialize());
+    out.extend(s2_2.serialize());
 
     // lengths for variable-length byte arrays
-    out.extend(vk.compress().as_bytes());
+    out.extend(vk.public_key_bytes());
     out.extend(&(x.len() as u32).to_le_bytes());
     out.extend(&x);
 
-    out.extend(r1.to_bytes());
-    out.extend(r2.to_bytes());
+    out.extend(r1.serialize());
+    out.extend(r2.serialize());
     out.extend(&(contrib_salt.len() as u32).to_le_bytes());
     out.extend(&contrib_salt);
 
@@ -1025,17 +1025,17 @@ fn SessionRecord_GetVTS(s: &SessionRecord) -> Result<Vec<u8>> {
 
 #[bridge_fn]
 fn SessionRecord_GetBobResponse(s: &SessionRecord) -> Result<Vec<u8>> {
-    //Result<(RistrettoPoint, Vec<u8>, (RistrettoPoint, RistrettoPoint, (Scalar, (Scalar, Scalar))), Vec<u8>, (RistrettoPoint, RistrettoPoint), Scalar, Scalar), SignalProtocolError>
+    //Result<(PublicKey, Vec<u8>, (PublicKey, PublicKey, (PrivateKey, (PrivateKey, PrivateKey))), Vec<u8>, (PublicKey, PublicKey), PrivateKey, PrivateKey), SignalProtocolError>
     let (z, (w, v), c, computed_c) = s.get_bob_response()?;
 
     let mut out = Vec::new();
 
     out.extend(&(z.len() as u32).to_le_bytes());
     out.extend(z);
-    out.extend(w.compress().as_bytes());
-    out.extend(v.compress().as_bytes());
-    out.extend(c.to_bytes());
-    out.extend(computed_c.to_bytes());
+    out.extend(w.public_key_bytes());
+    out.extend(v.public_key_bytes());
+    out.extend(c.serialize());
+    out.extend(computed_c.serialize());
 
 
     Ok(out)

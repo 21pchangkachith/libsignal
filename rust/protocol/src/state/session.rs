@@ -144,8 +144,7 @@ bitflags! {
         const Spqr = 1 << 2;
     }
 }
-use curve25519_dalek::ristretto::RistrettoPoint;
-use curve25519_dalek::scalar::Scalar;
+//use curve25519_dalek::{MontgomeryPoint, PrivateKey};
 
 #[derive(Clone, Debug)]
 pub(crate) struct SessionState {
@@ -937,7 +936,7 @@ impl SessionRecord {
     ///realfunc
     pub fn get_vts(
             &self,
-    ) -> Result<(RistrettoPoint, RistrettoPoint, (Scalar, (Scalar, Scalar)), RistrettoPoint, Vec<u8>, Scalar, Scalar, Vec<u8>), SignalProtocolError> {    
+    ) -> Result<(PublicKey, PublicKey, (PrivateKey, (PrivateKey, PrivateKey)), PublicKey, Vec<u8>, PrivateKey, PrivateKey, Vec<u8>), SignalProtocolError> {    
         Ok(
             bincode::deserialize(
         &self
@@ -957,7 +956,7 @@ impl SessionRecord {
     ///realfunc
     pub fn get_bob_response(
             &self,
-    ) -> Result<(Vec<u8>, (RistrettoPoint, RistrettoPoint), Scalar, Scalar), SignalProtocolError> {   
+    ) -> Result<(Vec<u8>, (PublicKey, PublicKey), PrivateKey, PrivateKey), SignalProtocolError> {   
         Ok(
             bincode::deserialize(
         &self

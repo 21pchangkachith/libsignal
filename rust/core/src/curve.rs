@@ -7,11 +7,17 @@ mod curve25519;
 mod utils;
 
 use std::cmp::Ordering;
+use std::ops::Add;
+use std::ops::Mul;
+use std::ops::Sub;
 use std::fmt;
 
+use curve25519_dalek::Scalar;
 use curve25519_dalek::{MontgomeryPoint, scalar};
 use rand::{CryptoRng, Rng};
 use subtle::ConstantTimeEq;
+use x25519_dalek::SharedSecret;
+use serde_with::serde_as;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum KeyType {
@@ -55,12 +61,14 @@ impl TryFrom<u8> for KeyType {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[serde_as]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 enum PublicKeyData {
     DjbPublicKey([u8; curve25519::PUBLIC_KEY_LENGTH]),
 }
 
-#[derive(Clone, Copy, Eq, derive_more::From)]
+#[serde_as]
+#[derive(Clone, Copy, Eq, derive_more::From, serde::Serialize, serde::Deserialize)]
 pub struct PublicKey {
     key: PublicKeyData,
 }
@@ -187,6 +195,90 @@ impl TryFrom<&[u8]> for PublicKey {
     }
 }
 
+impl Add for PublicKey {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if self.key_type() != rhs.key_type() {
+            panic!("cannot add keys of different types");
+        }
+        //key_pair.public_key.public_key_bytes().try_into().unwrap();
+        let k1 = self.public_key_bytes().try_into().unwrap();
+        let k2 = rhs.public_key_bytes().try_into().unwrap();
+        log::info!("add key is k1 {:?}", k1);
+        log::info!("add key is k2 {:?}", k2);
+        let mont_p1 = MontgomeryPoint(k1);
+        let p1 = mont_p1.to_edwards(0).unwrap();
+        let mont_p2 = MontgomeryPoint(k2);
+        let p2 = mont_p2.to_edwards(0).unwrap();
+        
+        let tweaked = p1 + p2;
+        let tweaked_mont = tweaked.to_montgomery();
+        let tweaked_pk_bytes: [u8; 32] = tweaked_mont.to_bytes();
+        let tweaked_pk = PublicKey::from_djb_public_key_bytes(&tweaked_pk_bytes).unwrap();
+        tweaked_pk
+    }
+}
+
+
+impl Mul<PrivateKey> for PublicKey {
+    type Output = Self;
+
+    fn mul(self, rhs: PrivateKey) -> Self::Output {
+        let arr: [u8; 32] = rhs.serialize()[..32]
+            .try_into()
+            .expect("at least 32 bytes required");
+        let k = Scalar::from_canonical_bytes(arr).unwrap();
+        let k1 = self.public_key_bytes().try_into().unwrap();
+        let mont_p1 = MontgomeryPoint(k1);
+        let p1 = mont_p1.to_edwards(0).unwrap();
+        let tweaked = k * p1;
+        let mon = tweaked.to_montgomery();
+        let agreement = mon.as_bytes();
+        let sola = PublicKey::from_djb_public_key_bytes(agreement).unwrap();
+        let sol = sola.key_data();
+        log::info!("key is {:?}", sol);
+        PublicKey::from_djb_public_key_bytes(agreement).unwrap()
+    }
+}
+
+impl Mul<PublicKey> for PrivateKey {
+    type Output = PublicKey;
+
+    fn mul(self, rhs: PublicKey) -> Self::Output {
+        let arr: [u8; 32] = self.serialize()[..32]
+            .try_into()
+            .expect("at least 32 bytes required");
+        let k = Scalar::from_canonical_bytes(arr).unwrap();
+        let k1 = rhs.public_key_bytes().try_into().unwrap();
+        let mont_p1 = MontgomeryPoint(k1);
+        let p1 = mont_p1.to_edwards(0).unwrap();
+        let tweaked = k * p1;
+        let mon = tweaked.to_montgomery();
+        let agreement = mon.as_bytes();
+        let sola = PublicKey::from_djb_public_key_bytes(agreement).unwrap();
+        let sol = sola.key_data();
+        log::info!("key is {:?}", sol);
+        PublicKey::from_djb_public_key_bytes(agreement).unwrap()
+    }
+}
+
+// impl Mul<scalar::Scalar> for PublicKey {
+//     type Output = Self;
+
+//     fn mul(self, rhs: scalar::Scalar) -> Self::Output {
+//         match self.key {
+//             PublicKeyData::DjbPublicKey(k) => {
+//                 let mont_p = MontgomeryPoint(k);
+//                 let tweaked = mont_p * rhs;
+//                 let tweaked_pk_bytes: [u8; 32] = tweaked.to_bytes();
+//                 let tweaked_pk = PublicKey::from_djb_public_key_bytes(&tweaked_pk_bytes).unwrap();
+//                 tweaked_pk
+//             }
+//         }
+//     }
+// }
+
 impl subtle::ConstantTimeEq for PublicKey {
     /// A constant-time comparison as long as the two keys have a matching type.
     ///
@@ -233,12 +325,13 @@ impl fmt::Debug for PublicKey {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[serde_as]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 enum PrivateKeyData {
     DjbPrivateKey([u8; curve25519::PRIVATE_KEY_LENGTH]),
 }
-
-#[derive(Clone, Copy, Eq, PartialEq, derive_more::From)]
+#[serde_as]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, derive_more::From, serde::Serialize, serde::Deserialize)]
 pub struct PrivateKey {
     key: PrivateKeyData,
 }
@@ -313,6 +406,83 @@ impl TryFrom<&[u8]> for PrivateKey {
 
     fn try_from(value: &[u8]) -> Result<Self, CurveError> {
         Self::deserialize(value)
+    }
+}
+
+impl Mul<PrivateKey> for PrivateKey {
+    type Output = Self;
+
+    fn mul(self, rhs: PrivateKey) -> Self::Output {
+        match self.key {
+            PrivateKeyData::DjbPrivateKey(k) => {
+                let left_bytes: [u8; 32] = self.serialize()[..32].try_into().unwrap();
+                let right_bytes: [u8; 32] = rhs.serialize()[..32].try_into().unwrap();
+                let left_s = Scalar::from_canonical_bytes(left_bytes).unwrap();
+                let right_s  = Scalar::from_canonical_bytes(right_bytes).unwrap();
+                let res = left_s * right_s;
+                let res_bytes = res.to_bytes();
+                log::info!("mul: result of private key mul is {:?}", res_bytes);
+                let des = PrivateKey::deserialize(&res_bytes).unwrap();
+                let fro = PrivateKey::from(PrivateKeyData::DjbPrivateKey(res_bytes));
+                log::info!("mul: des is {:?}", des);
+                log::info!("mul: fro is {:?}", fro);
+                fro
+            }
+        }
+    }
+}
+
+impl Sub for PrivateKey {
+    type Output = Self;
+
+    fn sub(self, rhs: PrivateKey) -> Self::Output {
+        if self.key_type() != rhs.key_type() {
+            panic!("cannot add keys of different types");
+        }
+        match self.key {
+            PrivateKeyData::DjbPrivateKey(k) => {
+                let left_bytes: [u8; 32] = self.serialize()[..32].try_into().unwrap();
+                let right_bytes: [u8; 32] = rhs.serialize()[..32].try_into().unwrap();
+                let left_s = Scalar::from_canonical_bytes(left_bytes).unwrap();
+                let right_s  = Scalar::from_canonical_bytes(right_bytes).unwrap();
+                let res = left_s - right_s;
+                let res_bytes = res.to_bytes();
+                log::info!("result of private key sub is {:?}", res_bytes);
+                let des = PrivateKey::deserialize(&res_bytes).unwrap();
+                let fro = PrivateKey::from(PrivateKeyData::DjbPrivateKey(res_bytes));
+                log::info!("des is {:?}", des);
+                log::info!("fro is {:?}", fro);
+                fro
+            }
+        }
+    }
+}
+
+
+impl Add for PrivateKey {
+    type Output = Self;
+
+    fn add(self, rhs: PrivateKey) -> Self::Output {
+        if self.key_type() != rhs.key_type() {
+            panic!("cannot add keys of different types");
+        }
+        match self.key {
+            PrivateKeyData::DjbPrivateKey(k) => {
+                let left_bytes: [u8; 32] = self.serialize()[..32].try_into().unwrap();
+                let right_bytes: [u8; 32] = rhs.serialize()[..32].try_into().unwrap();
+
+                let left_s = Scalar::from_canonical_bytes(left_bytes).unwrap();
+                let right_s  = Scalar::from_canonical_bytes(right_bytes).unwrap();
+                let res = left_s + right_s;
+                let res_bytes = res.to_bytes();
+                log::info!("result of private key add is {:?}", res_bytes);
+                let des = PrivateKey::deserialize(&res_bytes).unwrap();
+                let fro = PrivateKey::from(PrivateKeyData::DjbPrivateKey(res_bytes));
+                log::info!("des is {:?}", des);
+                log::info!("fro is {:?}", fro);
+                fro
+            }
+        }
     }
 }
 

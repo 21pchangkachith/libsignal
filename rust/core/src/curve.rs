@@ -56,13 +56,13 @@ impl TryFrom<u8> for KeyType {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum PublicKeyData {
+pub enum PublicKeyData {
     DjbPublicKey([u8; curve25519::PUBLIC_KEY_LENGTH]),
 }
 
 #[derive(Clone, Copy, Eq, derive_more::From)]
 pub struct PublicKey {
-    key: PublicKeyData,
+    pub key: PublicKeyData,
 }
 
 impl PublicKey {

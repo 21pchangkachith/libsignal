@@ -34,6 +34,7 @@ fn init_logger() {
 // this also tests that SAS matches up in normal messaging (between alice <-> eve and bob <-> alice)
 #[test]
 fn test_pvrf_mitm_sender_receive_step_resealing() -> TestResult {
+env_logger::try_init();
     // trivially, if eve impersonates alice/bob and does not forward to the other,
     // then the other of bob/alice could never possibly generate a SAS and the attack fails
     run(
@@ -278,6 +279,7 @@ fn test_pvrf_mitm_sender_receive_step_resealing() -> TestResult {
 // Expectation: Alice should become aware of the attack
 #[test]
 fn test_pvrf_mitm_verify_step_forwarding() -> TestResult {
+    env_logger::try_init();
     // trivially, if eve impersonates alice/bob and does not forward to the other,
     // then the other of bob/alice could never possibly generate a SAS and the attack fails
     run(
@@ -519,6 +521,7 @@ fn test_pvrf_mitm_verify_step_forwarding() -> TestResult {
 // Expectation: Bob should become aware of the attack
 #[test]
 fn test_pvrf_mitm_eval_step_forwarding() -> TestResult {
+    env_logger::try_init();
     
     run(
         |builder| {

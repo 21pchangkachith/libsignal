@@ -18,6 +18,7 @@
 mod keys;
 mod params;
 
+use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
 use libsignal_core::derive_arrays;
 use rand::{CryptoRng, Rng};
 
@@ -96,6 +97,8 @@ fn spqr_chain_params(self_connection: bool) -> spqr::ChainParams {
 
 use curve25519_dalek::{
     ristretto::RistrettoPoint,
+    MontgomeryPoint,
+    EdwardsPoint,
     scalar::Scalar,
     constants::RISTRETTO_BASEPOINT_POINT,
 };
@@ -218,11 +221,19 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
         secrets
             .extend_from_slice(&our_base_private_key.calculate_agreement(their_one_time_prekey)?);
         k = hash_generic_zp(their_one_time_prekey.public_key_bytes());
-        vk = g * k; 
+        //vk = g * k;
+        let bytes: [u8; 32] = their_one_time_prekey.public_key_bytes().try_into().unwrap();
+        vk = RistrettoPoint::from_uniform_bytes_single_elligator(&bytes);
+        // let mont_pt = MontgomeryPoint(bytes);
+        // let ed_pt = mont_pt.to_edwards(0).unwrap();
+        // ed_pt.
+        //vk = RistrettoPoint(ed_pt);
         x.extend_from_slice(their_one_time_prekey.public_key_bytes());
     } else {
         k = hash_generic_zp(parameters.their_signed_pre_key().public_key_bytes());
-        vk = g * k;
+        //vk = g * k;
+        let bytes: [u8; 32] = parameters.their_signed_pre_key().public_key_bytes().try_into().unwrap();
+        vk = RistrettoPoint::from_uniform_bytes_single_elligator(&bytes);
     }
     x.extend_from_slice(parameters.their_signed_pre_key().public_key_bytes());
     let mut alice_sas_contribution_salt = [0u8; 3];
@@ -268,15 +279,15 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
 
 
     // FOR MCS DEMO PURPOSES ONLY
-    let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
-    path.push("mcs_stored_alice_pvrf.txt");
-    let pvrf_ciphertext_from_file = if path.exists() {
-        log::info!("it existed on desktop");
-        Some(fs::read(&path).unwrap().into_boxed_slice())
-    } else {
-        Some(pvrf_ciphertext)
-    };
-    let pvrf_ciphertext = pvrf_ciphertext_from_file.expect("");
+    // let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
+    // path.push("mcs_stored_alice_pvrf.txt");
+    // let pvrf_ciphertext_from_file = if path.exists() {
+    //     log::info!("it existed on desktop");
+    //     Some(fs::read(&path).unwrap().into_boxed_slice())
+    // } else {
+    //     Some(pvrf_ciphertext)
+    // };
+    // let pvrf_ciphertext = pvrf_ciphertext_from_file.expect("");
 
 
     let (root_key, chain_key, pqr_key) = derive_keys(&secrets);
@@ -402,12 +413,58 @@ pub(crate) fn initialize_bob_session(
                 .private_key
                 .calculate_agreement(parameters.their_base_key())?,
         );
-        k = hash_generic_zp(our_one_time_pre_key_pair.public_key.public_key_bytes());
-        vk = g * k;
+        
+        let arr: [u8; 32] = our_one_time_pre_key_pair.private_key.serialize()
+            .try_into()
+            .expect("at least 32 bytes required");
+        k = Scalar::from_bytes_mod_order(arr);
+        //Scalar::from_bytes_mod_order(arr);
+        let bytes: [u8; 32] = our_one_time_pre_key_pair.public_key.public_key_bytes().try_into().unwrap();
+        vk = RistrettoPoint::from_uniform_bytes_single_elligator(&bytes);
+        //  CompressedRistretto::from_slice(&bytes)
+        //     .unwrap()
+        //     .decompress()
+        //     .expect("valid ristretto point");
+        // let priva = our_one_time_pre_key_pair.private_key;
+        // let unwra = priva.public_key().unwrap();
+        // let puba_byte = unwra.public_key_bytes();
+        let idealvk = g * k;
+        let testvk = ED25519_BASEPOINT_POINT * k;
+        let test_calcvk = EdwardsPoint::mul_base_clamped(bytes);
+        let test2_calcvk = MontgomeryPoint(bytes).to_edwards(0).unwrap();
+        // log::info!("puba top {:?}", puba_byte);
+        // log::info!("real pub {:?}", bytes);
+        log::info!("ideal vk {:?}", idealvk.compress().to_bytes());
+        log::info!("real vk {:?}", vk.compress().to_bytes());
+        log::info!("bytes of vk {:?}", bytes);
+        log::info!("test vk {:?}", testvk.compress().to_bytes());
+        log::info!("test calc vk {:?}", test_calcvk.compress().to_bytes());
+        log::info!("test2 calc vk {:?}", test2_calcvk.compress().to_bytes());
+        // k=hash_generic_zp(our_one_time_pre_key_pair.public_key.public_key_bytes());
+        // vk = g * k;
+        
         x.extend_from_slice(our_one_time_pre_key_pair.public_key.public_key_bytes());
     } else {
-        k = hash_generic_zp(parameters.our_signed_pre_key_pair().public_key.public_key_bytes());
-        vk = g * k; 
+
+        let arr: [u8; 32] = parameters.our_signed_pre_key_pair().private_key.serialize()[..32]
+            .try_into()
+            .expect("at least 32 bytes required");
+        k = Scalar::from_bytes_mod_order(arr);
+        let bytes: [u8; 32] = parameters.our_signed_pre_key_pair().public_key.public_key_bytes().try_into().unwrap();
+        vk = RistrettoPoint::from_uniform_bytes_single_elligator(&bytes);
+        let priva = parameters.our_signed_pre_key_pair().private_key;
+        let unwra = priva.public_key().unwrap();
+        let puba_byte = unwra.public_key_bytes();
+
+        let idealvk = g * k;
+        log::info!("puba {:?}", puba_byte);
+        log::info!("real pub {:?}", bytes);
+        log::info!("ideal vk {:?}", idealvk.compress().to_bytes());
+        log::info!("real vk {:?}", vk.compress().to_bytes());
+        
+
+        //k = hash_generic_zp(parameters.our_signed_pre_key_pair().public_key.public_key_bytes());
+        //vk = g * k; 
     }
 
     x.extend_from_slice(parameters.our_signed_pre_key_pair().public_key.public_key_bytes());
@@ -477,22 +534,21 @@ pub(crate) fn initialize_bob_session(
             .collect()
         );
         // FOR MCS DEMO PURPOSES ONLY
-        let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
-        path.push("mcs_stored_bob_response.txt");
-        let bob_response_from_file = if path.exists() {
-            log::info!("it existed on desktop");
-            Some(fs::read(&path).unwrap())
-        } else {
-            bob_response
-        };
+        // let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
+        // path.push("mcs_stored_bob_response.txt");
+        // let bob_response_from_file = if path.exists() {
+        //     log::info!("it existed on desktop");
+        //     Some(fs::read(&path).unwrap())
+        // } else {
+        //     bob_response
+        // };
 
-
-        log::info!("going to try writing to desktop");
-        let unoptioned = bincode::serialize(&response).unwrap();
-        let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
-        path.push("mcs_stored_bob_response.txt");
-        let _ = fs::write(&path, unoptioned);
-        bob_response = Some(bob_response_from_file.expect(""));
+        // log::info!("going to try writing to desktop");
+        // let unoptioned = bincode::serialize(&response).unwrap();
+        // let mut path = dirs::desktop_dir().expect("Could not find Desktop directory");
+        // path.push("mcs_stored_bob_response.txt");
+        // let _ = fs::write(&path, unoptioned);
+        // bob_response = Some(bob_response_from_file.expect(""));
     } else {
         log::info!("No PVRF ciphertext provided in PreKey message; skipping PVRF processing");
         bob_response = None;
@@ -613,7 +669,7 @@ pub fn pvrf_verify_from_session_data(
     // v = vk^alpha * w^beta
     let expected_v = (vk_point * alpha) + (w * beta);
     let ok = v == expected_v;
-
+    log::info!("what calculated v is {:?} bytes", expected_v.compress().as_bytes());
     if ok {
         log::info!("PVRF VERIFY SUCCESS z: {:?}", z);
     } else {

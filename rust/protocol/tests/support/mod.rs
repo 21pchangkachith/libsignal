@@ -103,6 +103,7 @@ pub async fn create_pre_key_bundle<R: Rng + CryptoRng>(
         kyber_pre_key_id.into(),
         kyber_pre_key_pair.public_key.clone(),
         kyber_pre_key_signature.to_vec(),
+        None,
         *store.get_identity_key_pair().await?.identity_key(),
     )?;
 
@@ -379,6 +380,7 @@ impl TestStoreBuilder {
             kyber_pre_key_record.id().expect("has id"),
             kyber_pre_key_record.public_key().expect("has public key"),
             kyber_pre_key_record.signature().expect("has signature"),
+            None,
             *identity_key,
         )
         .expect("can make pre key bundle from store")

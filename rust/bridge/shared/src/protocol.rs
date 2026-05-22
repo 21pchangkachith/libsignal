@@ -591,6 +591,7 @@ fn PreKeyBundle_New(
     signed_prekey_id: u32,
     signed_prekey: &PublicKey,
     signed_prekey_signature: &[u8],
+    pvrf_vk: &[u8],
     identity_key: &PublicKey,
     kyber_prekey_id: u32,
     kyber_prekey: &KyberPublicKey,
@@ -611,7 +612,6 @@ fn PreKeyBundle_New(
     let device_id = device_id
         .try_into()
         .map_err(|e: InvalidDeviceId| SignalProtocolError::InvalidArgument(e.to_string()))?;
-
     PreKeyBundle::new(
         registration_id,
         device_id,
@@ -622,6 +622,7 @@ fn PreKeyBundle_New(
         kyber_prekey_id.into(),
         kyber_prekey.clone(),
         kyber_prekey_signature.to_vec(),
+        Some(pvrf_vk.to_vec()),
         identity_key,
     )
 }

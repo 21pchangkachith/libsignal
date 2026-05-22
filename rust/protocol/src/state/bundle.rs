@@ -58,6 +58,7 @@ pub struct PreKeyBundleContent {
     pub kyber_pre_key_id: Option<KyberPreKeyId>,
     pub kyber_pre_key_public: Option<kem::PublicKey>,
     pub kyber_pre_key_signature: Option<Vec<u8>>,
+    pub pvrf_vk: Option<Vec<u8>>,
 }
 
 impl From<PreKeyBundle> for PreKeyBundleContent {
@@ -74,6 +75,7 @@ impl From<PreKeyBundle> for PreKeyBundleContent {
             kyber_pre_key_id: Some(bundle.kyber_pre_key.id),
             kyber_pre_key_public: Some(bundle.kyber_pre_key.public_key),
             kyber_pre_key_signature: Some(bundle.kyber_pre_key.signature),
+            pvrf_vk: bundle.pvrf_vk,
         }
     }
 }
@@ -116,6 +118,7 @@ impl TryFrom<PreKeyBundleContent> for PreKeyBundle {
                     "kyber_pre_key_signature is required".to_string(),
                 )
             })?,
+            content.pvrf_vk,
             content.identity_key.ok_or_else(|| {
                 SignalProtocolError::InvalidArgument("identity_key is required".to_string())
             })?,
@@ -132,6 +135,7 @@ pub struct PreKeyBundle {
     ec_signed_pre_key: SignedPreKey,
     identity_key: IdentityKey,
     kyber_pre_key: KyberPreKey,
+    pub pvrf_vk: Option<Vec<u8>>,
 }
 
 impl PreKeyBundle {
@@ -146,6 +150,7 @@ impl PreKeyBundle {
         kyber_pre_key_id: KyberPreKeyId,
         kyber_pre_key_public: kem::PublicKey,
         kyber_pre_key_signature: Vec<u8>,
+        pvrf_vk: Option<Vec<u8>>,
         identity_key: IdentityKey,
     ) -> Result<Self> {
         let (pre_key_id, pre_key_public) = match pre_key {
@@ -171,6 +176,7 @@ impl PreKeyBundle {
             pre_key_id,
             pre_key_public,
             ec_signed_pre_key,
+            pvrf_vk,
             identity_key,
             kyber_pre_key,
         })
@@ -218,6 +224,10 @@ impl PreKeyBundle {
 
     pub fn kyber_pre_key_signature(&self) -> Result<&[u8]> {
         Ok(&self.kyber_pre_key.signature)
+    }
+
+    pub fn pvrf_vk(&self) -> Result<Option<&Vec<u8>>> {
+    Ok(self.pvrf_vk.as_ref())
     }
 
     pub fn modify<F>(self, modify: F) -> Result<Self>

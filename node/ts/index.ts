@@ -301,6 +301,7 @@ export class PreKeyBundle {
     signed_prekey_id: number,
     signed_prekey: PublicKey,
     signed_prekey_signature: Uint8Array,
+    pvrf_vk: Uint8Array | null,
     identity_key: PublicKey,
     kyber_prekey_id: number,
     kyber_prekey: KEMPublicKey,
@@ -315,6 +316,7 @@ export class PreKeyBundle {
         signed_prekey_id,
         signed_prekey,
         signed_prekey_signature,
+        pvrf_vk,
         identity_key,
         kyber_prekey_id,
         kyber_prekey,
@@ -357,6 +359,10 @@ export class PreKeyBundle {
   signedPreKeySignature(): Uint8Array {
     return Native.PreKeyBundle_GetSignedPreKeySignature(this);
   }
+
+  pvrfVk(): Uint8Array | null {
+  return Native.PreKeyBundle_GetPvrfVk(this);
+}
 
   kyberPreKeyId(): number {
     return Native.PreKeyBundle_GetKyberPreKeyId(this);

@@ -282,7 +282,7 @@ type NativeFunctions = {
   PlaintextContent_Serialize: (obj: Wrapper<PlaintextContent>) => Uint8Array;
   PlaintextContent_GetBody: (obj: Wrapper<PlaintextContent>) => Uint8Array;
   PlaintextContent_FromDecryptionErrorMessage: (m: Wrapper<DecryptionErrorMessage>) => PlaintextContent;
-  PreKeyBundle_New: (registrationId: number, deviceId: number, prekeyId: number | null, prekey: Wrapper<PublicKey> | null, signedPrekeyId: number, signedPrekey: Wrapper<PublicKey>, signedPrekeySignature: Uint8Array, identityKey: Wrapper<PublicKey>, kyberPrekeyId: number, kyberPrekey: Wrapper<KyberPublicKey>, kyberPrekeySignature: Uint8Array) => PreKeyBundle;
+  PreKeyBundle_New: (registrationId: number, deviceId: number, prekeyId: number | null, prekey: Wrapper<PublicKey> | null, signedPrekeyId: number, signedPrekey: Wrapper<PublicKey>, signedPrekeySignature: Uint8Array, pvrfVk: Uint8Array | null, identityKey: Wrapper<PublicKey>, kyberPrekeyId: number, kyberPrekey: Wrapper<KyberPublicKey>, kyberPrekeySignature: Uint8Array) => PreKeyBundle;
   PreKeyBundle_GetIdentityKey: (p: Wrapper<PreKeyBundle>) => PublicKey;
   PreKeyBundle_GetSignedPreKeySignature: (obj: Wrapper<PreKeyBundle>) => Uint8Array;
   PreKeyBundle_GetKyberPreKeySignature: (obj: Wrapper<PreKeyBundle>) => Uint8Array;
@@ -293,6 +293,7 @@ type NativeFunctions = {
   PreKeyBundle_GetPreKeyId: (obj: Wrapper<PreKeyBundle>) => number | null;
   PreKeyBundle_GetPreKeyPublic: (obj: Wrapper<PreKeyBundle>) => PublicKey | null;
   PreKeyBundle_GetSignedPreKeyPublic: (obj: Wrapper<PreKeyBundle>) => PublicKey;
+  PreKeyBundle_GetPvrfVk: (bundle: Wrapper<PreKeyBundle>) => Uint8Array | null;
   PreKeyBundle_GetKyberPreKeyPublic: (bundle: Wrapper<PreKeyBundle>) => KyberPublicKey;
   SignedPreKeyRecord_Deserialize: (data: Uint8Array) => SignedPreKeyRecord;
   SignedPreKeyRecord_GetSignature: (obj: Wrapper<SignedPreKeyRecord>) => Uint8Array;
@@ -850,6 +851,7 @@ const { registerErrors,
   PreKeyBundle_GetPreKeyPublic,
   PreKeyBundle_GetSignedPreKeyPublic,
   PreKeyBundle_GetKyberPreKeyPublic,
+  PreKeyBundle_GetPvrfVk,
   SignedPreKeyRecord_Deserialize,
   SignedPreKeyRecord_GetSignature,
   SignedPreKeyRecord_Serialize,
@@ -1408,6 +1410,7 @@ export { registerErrors,
   PreKeyBundle_GetPreKeyPublic,
   PreKeyBundle_GetSignedPreKeyPublic,
   PreKeyBundle_GetKyberPreKeyPublic,
+  PreKeyBundle_GetPvrfVk,
   SignedPreKeyRecord_Deserialize,
   SignedPreKeyRecord_GetSignature,
   SignedPreKeyRecord_Serialize,

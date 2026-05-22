@@ -15,7 +15,7 @@ pub struct AliceSignalProtocolParameters {
     their_one_time_pre_key: Option<PublicKey>,
     their_ratchet_key: PublicKey,
     their_kyber_pre_key: kem::PublicKey,
-    their_pvrf_pre_key: Option<kem::PublicKey>,
+    their_pvrf_vk: Option<Vec<u8>>
 }
 
 impl AliceSignalProtocolParameters {
@@ -36,17 +36,17 @@ impl AliceSignalProtocolParameters {
             their_one_time_pre_key: None,
             their_ratchet_key,
             their_kyber_pre_key,
-            their_pvrf_pre_key: None,
+            their_pvrf_vk: None,
         }
     }
 
 
-    pub fn set_their_pvrf_pre_key(&mut self, pvrf_public: &kem::PublicKey) {
-        self.their_pvrf_pre_key = Some(pvrf_public.clone());
+    pub fn set_their_pvrf_vk(&mut self, pvrf_vk: Vec<u8> ) {
+        self.their_pvrf_vk = Some(pvrf_vk);
     }
 
-    pub fn with_their_pvrf_pre_key(mut self, pvrf_public: &kem::PublicKey) -> Self {
-        self.set_their_pvrf_pre_key(pvrf_public);
+    pub fn with_their_pvrf_vk(mut self, pvrf_vk: Vec<u8>) -> Self {
+        self.set_their_pvrf_vk(pvrf_vk);
         self
     }
 
@@ -90,8 +90,8 @@ impl AliceSignalProtocolParameters {
     }
 
     #[inline]
-    pub fn their_pvrf_pre_key(&self) -> Option<&kem::PublicKey> {
-        self.their_pvrf_pre_key.as_ref()
+    pub fn their_pvrf_vk(&self) -> Option<&Vec<u8>> {
+    self.their_pvrf_vk.as_ref()
     }
 
     #[inline]

@@ -209,6 +209,8 @@ pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
     now: SystemTime,
     mut csprng: &mut R, // Cryptographically secure RNG for ephemeral key generation
 ) -> Result<()> {
+    log::info!("PVRF DEBUG 1: entered process_prekey_bundle");
+
     let their_identity_key = bundle.identity_key()?; // Retrive Bob's long-term identity key (ipkr)
 
     if !identity_store  // Check if Bob's identity is trustworthy (MITM protection)
@@ -219,6 +221,8 @@ pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
             remote_address.clone(),
         ));
     }
+    log::info!("PVRF DEBUG 2: got identity key");
+
 
     // Verify Bob's SPK and Kyber PK w/ Bob's identity key (ipkr)
     if !their_identity_key.public_key().verify_signature(
@@ -249,6 +253,7 @@ pub async fn process_prekey_bundle<R: Rng + CryptoRng>(
     let their_one_time_prekey_id = bundle.pre_key_id()?;
 
     let our_identity_key_pair = identity_store.get_identity_key_pair().await?;  // Retrieve Alice's identity key (ipks)
+    log::info!("PVRF DEBUG 3: alice signal protocols key");
 
     let mut parameters = AliceSignalProtocolParameters::new(
         our_identity_key_pair,  // our = Alice/sender

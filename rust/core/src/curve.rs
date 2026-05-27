@@ -228,7 +228,7 @@ impl Mul<PrivateKey> for PublicKey {
         let arr: [u8; 32] = rhs.serialize()[..32]
             .try_into()
             .expect("at least 32 bytes required");
-        let k = Scalar::from_canonical_bytes(arr).unwrap();
+        let k = Scalar::from_bytes_mod_order(arr);
         let k1 = self.public_key_bytes().try_into().unwrap();
         let mont_p1 = MontgomeryPoint(k1);
         let p1 = mont_p1.to_edwards(0).unwrap();
@@ -249,7 +249,7 @@ impl Mul<PublicKey> for PrivateKey {
         let arr: [u8; 32] = self.serialize()[..32]
             .try_into()
             .expect("at least 32 bytes required");
-        let k = Scalar::from_canonical_bytes(arr).unwrap();
+        let k = Scalar::from_bytes_mod_order(arr);
         let k1 = rhs.public_key_bytes().try_into().unwrap();
         let mont_p1 = MontgomeryPoint(k1);
         let p1 = mont_p1.to_edwards(0).unwrap();
@@ -417,8 +417,8 @@ impl Mul<PrivateKey> for PrivateKey {
             PrivateKeyData::DjbPrivateKey(k) => {
                 let left_bytes: [u8; 32] = self.serialize()[..32].try_into().unwrap();
                 let right_bytes: [u8; 32] = rhs.serialize()[..32].try_into().unwrap();
-                let left_s = Scalar::from_canonical_bytes(left_bytes).unwrap();
-                let right_s  = Scalar::from_canonical_bytes(right_bytes).unwrap();
+                let left_s = Scalar::from_bytes_mod_order(left_bytes);
+                let right_s  = Scalar::from_bytes_mod_order(right_bytes);
                 let res = left_s * right_s;
                 let res_bytes = res.to_bytes();
                 log::info!("mul: result of private key mul is {:?}", res_bytes);
@@ -443,8 +443,8 @@ impl Sub for PrivateKey {
             PrivateKeyData::DjbPrivateKey(k) => {
                 let left_bytes: [u8; 32] = self.serialize()[..32].try_into().unwrap();
                 let right_bytes: [u8; 32] = rhs.serialize()[..32].try_into().unwrap();
-                let left_s = Scalar::from_canonical_bytes(left_bytes).unwrap();
-                let right_s  = Scalar::from_canonical_bytes(right_bytes).unwrap();
+                let left_s = Scalar::from_bytes_mod_order(left_bytes);
+                let right_s  = Scalar::from_bytes_mod_order(right_bytes);
                 let res = left_s - right_s;
                 let res_bytes = res.to_bytes();
                 log::info!("result of private key sub is {:?}", res_bytes);
@@ -471,8 +471,8 @@ impl Add for PrivateKey {
                 let left_bytes: [u8; 32] = self.serialize()[..32].try_into().unwrap();
                 let right_bytes: [u8; 32] = rhs.serialize()[..32].try_into().unwrap();
 
-                let left_s = Scalar::from_canonical_bytes(left_bytes).unwrap();
-                let right_s  = Scalar::from_canonical_bytes(right_bytes).unwrap();
+                let left_s = Scalar::from_bytes_mod_order(left_bytes);
+                let right_s  = Scalar::from_bytes_mod_order(right_bytes);
                 let res = left_s + right_s;
                 let res_bytes = res.to_bytes();
                 log::info!("result of private key add is {:?}", res_bytes);

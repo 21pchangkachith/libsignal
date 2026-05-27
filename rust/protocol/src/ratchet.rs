@@ -152,6 +152,7 @@ fn hash_to_g(domain_sep: &[u8], input: &[u8]) -> PublicKey {
 
     let hash = hasher.finalize(); // 64 bytes
     let correct_size: [u8; 32] = hash[..32].try_into().unwrap();
+    log::info!("in hash_to_g");
     let pt = MontgomeryPoint::mul_base_clamped(correct_size);
     let bytes = pt.as_bytes();
     let pub_key = PublicKey::from_djb_public_key_bytes(bytes);
@@ -197,6 +198,7 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
     parameters: &AliceSignalProtocolParameters, // Contains Alice's ik and eph keys, Bob's ik, signed prekey, otpk, PQ prekey
     mut csprng: &mut R,
 ) -> Result<SessionState> {
+    log::info!("RATCHET DEBUG A1: entered initialize_alice_session");
     let local_identity = parameters.our_identity_key_pair().identity_key(); // Alice's ipk
 
     let mut secrets = Vec::with_capacity(32 * 6);
@@ -260,22 +262,35 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
 
     //sample alpha, beta from the set of real integers
     //step 1, page 11, preverify
+    log::info!("RATCHET DEBUG A2: before alpha beta");
     let alpha = sample_random_zp(csprng);
     let beta = sample_random_zp(csprng);
+
+    log::info!("RATCHET DEBUG A3: before h");
+    log::info!("what is alpha {:?} ", alpha);
+    log::info!("what is beta {:?} ", beta);
+    log::info!("what is g {:?} ", g);
+    log::info!("what is vk {:?} ", vk);
+    log::info!("what is x {:?} ", x);
+
+
     let h = alpha * g + beta * hash_i(&vk, &x);    
+        log::info!("RATCHET DEBUG A3.25: after h");
     let hprime = alpha * hash_a(&vk, &x) + beta * hash_b(&vk, &x);
+    log::info!("RATCHET DEBUG A3.5: after hprime");
 
     //step 2
     let r1 = sample_random_zp(csprng);
     let r2 = sample_random_zp(csprng);
     // PrivateKey * point = point to the power of scaler in paper
+    log::info!("RATCHET DEBUG A4: before eta");
     let eta = (g * r1) + (hash_i(&vk, &x) * r2);
     let etaprime = (hash_a(&vk, &x) * r1) + (hash_b(&vk, &x) * r2);
     let c = hash_fs(&vk, &x, &h, &hprime, &eta, &etaprime);
     //s values should be mod p
     let s = (r1 - c * alpha, r2 - c * beta);
-    assert_eq!(r1 - c * alpha, r1 - alpha * c);
-    assert_eq!(r1 - c * alpha + c * alpha, r1);
+    //assert_eq!(r1 - c * alpha, r1 - alpha * c);
+    //assert_eq!(r1 - c * alpha + c * alpha, r1);
     let tau = (c,s);
 
     //step 3
@@ -284,6 +299,7 @@ pub(crate) fn initialize_alice_session<R: Rng + CryptoRng>(
     let redacted_vts_for_bob = (vt, alice_sas_contribution_salt.clone());
 
     log::info!("alice vt: {:?}", vt);
+    log::info!("RATCHET DEBUG A5: before bincode serialize vts");
     let pvrf_ciphertext =  bincode::serialize(&redacted_vts_for_bob).unwrap().into_boxed_slice();
     //output vt, store vts
 

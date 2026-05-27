@@ -608,6 +608,7 @@ impl SessionState {
         // ####### IMPORTANT #######
         self.session.pending_pre_key = None;
         self.session.pending_kyber_pre_key = None;
+        self.session.pending_pvrf_pre_key = None;
     }
 
     pub(crate) fn set_remote_registration_id(&mut self, registration_id: u32) {

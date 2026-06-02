@@ -117,22 +117,12 @@ fn hash_to_g(domain_sep: &[u8], input: &[u8]) -> RistrettoPoint {
 }
 
 fn hash_to_g_edwards(domain_sep: &[u8], input: &[u8]) -> EdwardsPoint {
-    // let mut bytes = Vec::new();
-    // bytes.extend(domain_sep);
-    // bytes.extend(input);
+    let mut bytes = Vec::new();
+    bytes.extend(domain_sep);
+    bytes.extend(input);
 
-
-
-    // let bytes: [u8; 32] = bytes.as_slice()[..32].try_into().unwrap();
-    
-    // let bytes: [u8; 32] = Sha512::digest(&bytes).as_slice()[..32].try_into().unwrap();
-    // MontgomeryPoint(bytes).to_edwards(0).unwrap()
-    let mut hasher = Sha512::new();
-    hasher.update(domain_sep);
-    hasher.update(input);
-    let temp = RistrettoPoint::from_hash(hasher);
-    //get the byte representation of this ristretto
-    let bytes = temp.compress().to_bytes();
+    let bytes: [u8; 32] = bytes.as_slice()[..32].try_into().unwrap();
+    //let bytes: [u8; 32] = Sha512::digest(&bytes).as_slice()[..32].try_into().unwrap();
     MontgomeryPoint(bytes).to_edwards(0).unwrap()
 }
 

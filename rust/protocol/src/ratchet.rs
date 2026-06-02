@@ -121,9 +121,8 @@ fn hash_to_g_edwards(domain_sep: &[u8], input: &[u8]) -> EdwardsPoint {
     bytes.extend(domain_sep);
     bytes.extend(input);
 
-    let bytes: [u8; 32] = bytes.as_slice()[..32].try_into().unwrap();
-    //let bytes: [u8; 32] = Sha512::digest(&bytes).as_slice()[..32].try_into().unwrap();
-    MontgomeryPoint(bytes).to_edwards(0).unwrap()
+    let bytes: [u8; 32] = Sha512::digest(&bytes).as_slice()[..32].try_into().unwrap();
+    EdwardsPoint::mul_base_clamped(bytes)
 }
 
 pub fn hash_i(vk: &EdwardsPoint , x: &[u8]) -> EdwardsPoint {

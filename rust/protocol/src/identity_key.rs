@@ -23,22 +23,24 @@ const ALTERNATE_IDENTITY_SIGNATURE_PREFIX_2: &[u8] = b"Signal_PNI_Signature";
     Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy, derive_more::From, derive_more::Into,
 )]
 pub struct IdentityKey {
-    public_key: PublicKey,
+    public_key: PublicKey,  // Alice's or Bob's ik
 }
 
 impl IdentityKey {
     /// Initialize a public-facing identity from a public key.
-    pub fn new(public_key: PublicKey) -> Self {
+    pub fn new(public_key: PublicKey) -> Self { // Paper: receiving ipkr
         Self { public_key }
     }
 
     /// Return the public key representing this identity.
+    // Exposes public key for DH calculations
     #[inline]
-    pub fn public_key(&self) -> &PublicKey {
+    pub fn public_key(&self) -> &PublicKey { 
         &self.public_key
     }
 
     /// Return an owned byte slice which can be deserialized with [`Self::decode`].
+    // Allows ipkr to be sent/published to the server
     #[inline]
     pub fn serialize(&self) -> Box<[u8]> {
         self.public_key.serialize()
@@ -148,6 +150,7 @@ impl IdentityKeyPair {
     }
 }
 
+// Storage/persistence logic
 impl TryFrom<&[u8]> for IdentityKeyPair {
     type Error = SignalProtocolError;
 
@@ -161,6 +164,7 @@ impl TryFrom<&[u8]> for IdentityKeyPair {
     }
 }
 
+// Derive corresponding public key from private key
 impl TryFrom<PrivateKey> for IdentityKeyPair {
     type Error = SignalProtocolError;
 
@@ -170,6 +174,7 @@ impl TryFrom<PrivateKey> for IdentityKeyPair {
     }
 }
 
+// Convert generic KeyPair into Signal-specific IdentityKeyPair
 impl From<KeyPair> for IdentityKeyPair {
     fn from(value: KeyPair) -> Self {
         Self {
@@ -179,6 +184,7 @@ impl From<KeyPair> for IdentityKeyPair {
     }
 }
 
+// Reverse of prev function
 impl From<IdentityKeyPair> for KeyPair {
     fn from(value: IdentityKeyPair) -> Self {
         Self::new(value.identity_key.into(), value.private_key)
@@ -193,6 +199,7 @@ mod tests {
     use super::*;
 
     #[test]
+    // Ensure public identity is consistent
     fn test_identity_key_from() {
         let key_pair = KeyPair::generate(&mut OsRng.unwrap_err());
         let key_pair_public_serialized = key_pair.public_key.serialize();

@@ -10,6 +10,7 @@ use bitflags::bitflags;
 use prost::Message;
 use rand::{CryptoRng, Rng};
 use subtle::ConstantTimeEq;
+// use std::fs;
 
 use crate::proto::storage::{RecordStructure, SessionStructure, session_structure};
 use crate::protocol::CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION;
@@ -43,6 +44,8 @@ pub(crate) struct UnacknowledgedPreKeyMessageItems<'a> {
     // so we leave these optional for now.
     kyber_pre_key_id: Option<KyberPreKeyId>,
     kyber_ciphertext: Option<&'a [u8]>,
+    pvrf_pre_key_id: Option<KyberPreKeyId>,
+    pvrf_ciphertext: Option<&'a [u8]>,
     timestamp: SystemTime,
 }
 
@@ -52,9 +55,13 @@ impl<'a> UnacknowledgedPreKeyMessageItems<'a> {
         signed_pre_key_id: SignedPreKeyId,
         base_key: PublicKey,
         pending_kyber_pre_key: Option<&'a session_structure::PendingKyberPreKey>,
+        pending_pvrf_pre_key: Option<&'a session_structure::PendingPvrfPreKey>,
         timestamp: SystemTime,
     ) -> Self {
         let (kyber_pre_key_id, kyber_ciphertext) = pending_kyber_pre_key
+            .map(|pending| (pending.pre_key_id.into(), pending.ciphertext.as_slice()))
+            .unzip();
+        let (pvrf_pre_key_id, pvrf_ciphertext) = pending_pvrf_pre_key
             .map(|pending| (pending.pre_key_id.into(), pending.ciphertext.as_slice()))
             .unzip();
         Self {
@@ -63,6 +70,8 @@ impl<'a> UnacknowledgedPreKeyMessageItems<'a> {
             base_key,
             kyber_pre_key_id,
             kyber_ciphertext,
+            pvrf_pre_key_id,
+            pvrf_ciphertext,
             timestamp,
         }
     }
@@ -85,6 +94,14 @@ impl<'a> UnacknowledgedPreKeyMessageItems<'a> {
 
     pub(crate) fn kyber_ciphertext(&self) -> Option<&'a [u8]> {
         self.kyber_ciphertext
+    }
+
+    pub(crate) fn pvrf_pre_key_id(&self) -> Option<KyberPreKeyId> {
+        self.pvrf_pre_key_id
+    }
+
+    pub(crate) fn pvrf_ciphertext(&self) -> Option<&'a [u8]> {
+        self.pvrf_ciphertext
     }
 
     pub(crate) fn timestamp(&self) -> SystemTime {
@@ -127,6 +144,8 @@ bitflags! {
         const Spqr = 1 << 2;
     }
 }
+use curve25519_dalek::EdwardsPoint;
+use curve25519_dalek::scalar::Scalar;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SessionState {
@@ -145,6 +164,9 @@ impl SessionState {
         root_key: &RootKey,
         alice_base_key: &PublicKey,
         pq_ratchet_state: spqr::SerializedState,
+        sas: Option<Vec<u8>>,
+        vts: Option<Vec<u8>>,
+        bob_response: Option<Vec<u8>>,
     ) -> Self {
         Self {
             session: SessionStructure {
@@ -157,10 +179,14 @@ impl SessionState {
                 receiver_chains: vec![],
                 pending_pre_key: None,
                 pending_kyber_pre_key: None,
+                pending_pvrf_pre_key: None,
                 remote_registration_id: 0,
                 local_registration_id: 0,
                 alice_base_key: alice_base_key.serialize().into_vec(),
                 pq_ratchet_state,
+                sas: sas.unwrap_or_default(),
+                vts: vts.unwrap_or_default(),
+                bob_response: bob_response.unwrap_or_default(),
             },
         }
     }
@@ -513,6 +539,14 @@ impl SessionState {
         self.session.pending_pre_key = Some(pending);
     }
 
+    pub(crate) fn set_pvrf_ciphertext(&mut self, ciphertext: kem::SerializedCiphertext) {
+        let pending = session_structure::PendingPvrfPreKey {
+            pre_key_id: u32::MAX, // has to be set to the actual value separately
+            ciphertext: ciphertext.into_vec(),
+        };
+        self.session.pending_pvrf_pre_key = Some(pending);
+    }
+
     pub(crate) fn set_kyber_ciphertext(&mut self, ciphertext: kem::SerializedCiphertext) {
         let pending = session_structure::PendingKyberPreKey {
             pre_key_id: u32::MAX, // has to be set to the actual value separately
@@ -543,6 +577,7 @@ impl SessionState {
                 PublicKey::deserialize(&pending_pre_key.base_key)
                     .map_err(|_| InvalidSessionError("invalid pending PreKey message base key"))?,
                 self.session.pending_kyber_pre_key.as_ref(),
+                self.session.pending_pvrf_pre_key.as_ref(),
                 SystemTime::UNIX_EPOCH + Duration::from_secs(pending_pre_key.timestamp),
             )))
         } else {
@@ -567,6 +602,7 @@ impl SessionState {
             local_registration_id: _local_registration_id,
             alice_base_key: _alice_base_key,
             pq_ratchet_state: _pq_ratchet_state,
+            ..
         } = &self.session;
         // ####### IMPORTANT #######
         // Don't forget to clean up new pending fields.
@@ -895,6 +931,62 @@ impl SessionRecord {
             Some(session) => Ok(&session.sender_ratchet_key()? == key),
             None => Ok(false),
         }
+    }
+
+
+    ///realfunc
+    pub fn get_vts(
+            &self,
+    ) -> Result<(EdwardsPoint, EdwardsPoint, (Scalar, (Scalar, Scalar)), EdwardsPoint, Vec<u8>, Scalar, Scalar, Vec<u8>), SignalProtocolError> {    
+        Ok(
+            bincode::deserialize(
+        &self
+                .session_state()
+                .ok_or_else(|| {
+                    SignalProtocolError::InvalidState(
+                        "get_vts",
+                        "No current session".into(),
+                    )
+                })?
+                .session.vts
+            )
+        .unwrap()
+        )
+    }
+
+    ///realfunc
+    pub fn get_bob_response(
+            &self,
+    ) -> Result<(Vec<u8>, (EdwardsPoint, EdwardsPoint), Scalar, Scalar), SignalProtocolError> {   
+        Ok(
+            bincode::deserialize(
+        &self
+                .session_state()
+                .ok_or_else(|| {
+                    SignalProtocolError::InvalidState(
+                        "get_bob_response",
+                        "No current session".into(),
+                    )
+                })?
+                .session.bob_response
+            )
+        .unwrap()
+        )
+    }
+
+    ///dummy func for now
+    pub fn get_sas(
+            &self,
+    ) -> Result<Vec<u8>, SignalProtocolError> {
+        Ok(self
+            .session_state()
+            .ok_or_else(|| {
+                SignalProtocolError::InvalidState(
+                    "get_sas",
+                    "No current session".into(),
+                )
+            })?
+            .session.sas.clone())
     }
 
     pub fn get_kyber_ciphertext(&self) -> Result<Option<&Vec<u8>>, SignalProtocolError> {

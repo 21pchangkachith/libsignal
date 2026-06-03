@@ -42,6 +42,7 @@ export type ResponseAndDebugInfo = {
   debugInfo: ChatServiceDebugInfo;
 };
 
+
 export type SealedSenderMultiRecipientMessageRecipient = {
   deviceIds: number[];
   registrationIds: number[];
@@ -351,6 +352,10 @@ type NativeFunctions = {
   SessionRecord_ArchiveCurrentState: (sessionRecord: Wrapper<SessionRecord>) => void;
   SessionRecord_HasUsableSenderChain: (s: Wrapper<SessionRecord>, now: Timestamp) => boolean;
   SessionRecord_CurrentRatchetKeyMatches: (s: Wrapper<SessionRecord>, key: Wrapper<PublicKey>) => boolean;
+  SessionRecord_GetSAS: (s: Wrapper<SessionRecord>) => Uint8Array;
+  SessionRecord_GetVTS: (s: Wrapper<SessionRecord>) => any;
+  SessionRecord_GetBobResponse: (s: Wrapper<SessionRecord>) => any;
+  Pvrf_Verify: (vk: Uint8Array, x: Uint8Array, alpha: Uint8Array, beta: Uint8Array, w: Uint8Array, v: Uint8Array) => Uint8Array;
   SessionRecord_Deserialize: (data: Uint8Array) => SessionRecord;
   SessionRecord_Serialize: (obj: Wrapper<SessionRecord>) => Uint8Array;
   SessionRecord_GetLocalRegistrationId: (obj: Wrapper<SessionRecord>) => number;
@@ -903,6 +908,10 @@ const { registerErrors,
   SessionRecord_ArchiveCurrentState,
   SessionRecord_HasUsableSenderChain,
   SessionRecord_CurrentRatchetKeyMatches,
+  SessionRecord_GetSAS,
+  SessionRecord_GetVTS,
+  SessionRecord_GetBobResponse,
+  Pvrf_Verify,
   SessionRecord_Deserialize,
   SessionRecord_Serialize,
   SessionRecord_GetLocalRegistrationId,
@@ -1457,6 +1466,10 @@ export { registerErrors,
   SessionRecord_ArchiveCurrentState,
   SessionRecord_HasUsableSenderChain,
   SessionRecord_CurrentRatchetKeyMatches,
+  SessionRecord_GetSAS,
+  SessionRecord_GetVTS,
+  SessionRecord_GetBobResponse,
+  Pvrf_Verify,
   SessionRecord_Deserialize,
   SessionRecord_Serialize,
   SessionRecord_GetLocalRegistrationId,

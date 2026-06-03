@@ -14,16 +14,17 @@ use crate::state::{KyberPreKeyId, PreKeyId, SignedPreKeyId};
 use crate::{
     IdentityKey, PrivateKey, PublicKey, Result, SignalProtocolError, Timestamp, kem, proto,
 };
-
 pub(crate) const CIPHERTEXT_MESSAGE_CURRENT_VERSION: u8 = 4;
+// pub(crate) const CIPHERTEXT_MESSAGE_PRE_PVRF_VERSION: u8 = 4;
 // Backward compatible, lacking Kyber keys, version
 pub(crate) const CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION: u8 = 3;
 pub(crate) const SENDERKEY_MESSAGE_CURRENT_VERSION: u8 = 3;
 
+// Different types of messages that can be sent
 #[derive(Debug)]
 pub enum CiphertextMessage {
     SignalMessage(SignalMessage),
-    PreKeySignalMessage(PreKeySignalMessage),
+    PreKeySignalMessage(PreKeySignalMessage), // First message sent in new session using prekey bundle
     SenderKeyMessage(SenderKeyMessage),
     PlaintextContent(PlaintextContent),
 }
@@ -31,9 +32,11 @@ pub enum CiphertextMessage {
 #[derive(Copy, Clone, Eq, PartialEq, Debug, derive_more::TryFrom)]
 #[repr(u8)]
 #[try_from(repr)]
+// Used in session.rs process_prekey_impl()
+// Numeric type tag for messages
 pub enum CiphertextMessageType {
     Whisper = 2,
-    PreKey = 3,
+    PreKey = 3, // X3DH first message
     SenderKey = 7,
     Plaintext = 8,
 }
@@ -47,7 +50,6 @@ impl CiphertextMessage {
             CiphertextMessage::PlaintextContent(_) => CiphertextMessageType::Plaintext,
         }
     }
-
     pub fn serialize(&self) -> &[u8] {
         match self {
             CiphertextMessage::SignalMessage(x) => x.serialized(),
@@ -81,10 +83,11 @@ impl SignalMessage {
         counter: u32,
         previous_counter: u32,
         ciphertext: &[u8],
-        sender_identity_key: &IdentityKey,
-        receiver_identity_key: &IdentityKey,
+        sender_identity_key: &IdentityKey,  // Alice's long-term identity key (ikA)
+        receiver_identity_key: &IdentityKey,    // Bob's long-term identity key (ikB)
         pq_ratchet: &[u8],
     ) -> Result<Self> {
+        // Wraps fields into protobuf wire message used for sending over the network
         let message = proto::wire::SignalMessage {
             ratchet_key: Some(sender_ratchet_key.serialize().into_vec()),
             counter: Some(counter),
@@ -150,10 +153,11 @@ impl SignalMessage {
         &self.ciphertext
     }
 
+    // Verify the Message Authentication Code
     pub fn verify_mac(
         &self,
-        sender_identity_key: &IdentityKey,
-        receiver_identity_key: &IdentityKey,
+        sender_identity_key: &IdentityKey,  // Alice's ik
+        receiver_identity_key: &IdentityKey,    // Bob's ik
         mac_key: &[u8],
     ) -> Result<bool> {
         let (content, their_mac) = self
@@ -175,8 +179,8 @@ impl SignalMessage {
     }
 
     fn compute_mac(
-        sender_identity_key: &IdentityKey,
-        receiver_identity_key: &IdentityKey,
+        sender_identity_key: &IdentityKey,  // Alice's ikA
+        receiver_identity_key: &IdentityKey,    // Bob's ikB
         mac_key: &[u8],
         message: &[u8],
     ) -> Result<[u8; Self::MAC_LENGTH]> {
@@ -204,7 +208,7 @@ impl AsRef<[u8]> for SignalMessage {
     }
 }
 
-impl TryFrom<&[u8]> for SignalMessage {
+impl TryFrom<&[u8]> for SignalMessage {   // Alice's SignalMessage that is received by Bob
     type Error = SignalProtocolError;
 
     fn try_from(value: &[u8]) -> Result<Self> {
@@ -226,7 +230,6 @@ impl TryFrom<&[u8]> for SignalMessage {
         let proto_structure =
             proto::wire::SignalMessage::decode(&value[1..value.len() - SignalMessage::MAC_LENGTH])
                 .map_err(|_| SignalProtocolError::InvalidProtobufEncoding)?;
-
         let sender_ratchet_key = proto_structure
             .ratchet_key
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
@@ -267,7 +270,22 @@ impl KyberPayload {
     }
 }
 
+
 #[derive(Debug, Clone)]
+pub struct PvrfPayload {
+    ciphertext: kem::SerializedCiphertext,  
+}
+
+impl PvrfPayload {
+    pub fn new(ciphertext: kem::SerializedCiphertext) -> Self {
+        Self {
+            ciphertext,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+// First message Alice sends to Bob
 pub struct PreKeySignalMessage {
     message_version: u8,
     registration_id: u32,
@@ -276,6 +294,7 @@ pub struct PreKeySignalMessage {
     // While we reject messages without Kyber payloads, we still for now allow constructing the
     // struct without one so that we can provide a better error message when we try to process it.
     kyber_payload: Option<KyberPayload>,
+    pvrf_payload: Option<PvrfPayload>,
     base_key: PublicKey,
     identity_key: IdentityKey,
     message: SignalMessage,
@@ -286,13 +305,15 @@ impl PreKeySignalMessage {
     pub fn new(
         message_version: u8,
         registration_id: u32,
-        pre_key_id: Option<PreKeyId>,
+        pre_key_id: Option<PreKeyId>,  
         signed_pre_key_id: SignedPreKeyId,
         kyber_payload: Option<KyberPayload>,
+        pvrf_payload: Option<PvrfPayload>,
         base_key: PublicKey,
-        identity_key: IdentityKey,
+        identity_key: IdentityKey, 
         message: SignalMessage,
     ) -> Result<Self> {
+        
         let proto_message = proto::wire::PreKeySignalMessage {
             registration_id: Some(registration_id),
             pre_key_id: pre_key_id.map(|id| id.into()),
@@ -301,6 +322,9 @@ impl PreKeySignalMessage {
             kyber_ciphertext: kyber_payload
                 .as_ref()
                 .map(|kyber| kyber.ciphertext.to_vec()),
+            pvrf_ciphertext: pvrf_payload
+                .as_ref()
+                .map(|pvrf| pvrf.ciphertext.to_vec()),
             base_key: Some(base_key.serialize().into_vec()),
             identity_key: Some(identity_key.serialize().into_vec()),
             message: Some(Vec::from(message.as_ref())),
@@ -315,6 +339,7 @@ impl PreKeySignalMessage {
             registration_id,
             pre_key_id,
             signed_pre_key_id,
+            pvrf_payload,
             kyber_payload,
             base_key,
             identity_key,
@@ -341,6 +366,11 @@ impl PreKeySignalMessage {
     #[inline]
     pub fn signed_pre_key_id(&self) -> SignedPreKeyId {
         self.signed_pre_key_id
+    }
+
+    #[inline]
+    pub fn pvrf_ciphertext(&self) -> Option<&kem::SerializedCiphertext> {
+        self.pvrf_payload.as_ref().map(|pvrf| &pvrf.ciphertext)
     }
 
     #[inline]
@@ -387,7 +417,6 @@ impl TryFrom<&[u8]> for PreKeySignalMessage {
         if value.is_empty() {
             return Err(SignalProtocolError::CiphertextMessageTooShort(value.len()));
         }
-
         let message_version = value[0] >> 4;
         if message_version < CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION {
             return Err(SignalProtocolError::LegacyCiphertextVersion(
@@ -403,16 +432,16 @@ impl TryFrom<&[u8]> for PreKeySignalMessage {
         let proto_structure = proto::wire::PreKeySignalMessage::decode(&value[1..])
             .map_err(|_| SignalProtocolError::InvalidProtobufEncoding)?;
 
-        let base_key = proto_structure
+        let base_key = proto_structure  // Alice's ephemeral DH key (epkA)
             .base_key
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
-        let identity_key = proto_structure
+        let identity_key = proto_structure  // Alice's identity key (ipkA)
             .identity_key
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
         let message = proto_structure
             .message
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
-        let signed_pre_key_id = proto_structure
+        let signed_pre_key_id = proto_structure // Bob's signed prekey
             .signed_pre_key_id
             .ok_or(SignalProtocolError::InvalidProtobufEncoding)?;
 
@@ -422,8 +451,11 @@ impl TryFrom<&[u8]> for PreKeySignalMessage {
             proto_structure.kyber_pre_key_id,
             proto_structure.kyber_ciphertext,
         ) {
+            // Normal PQ case: Kyber prekey ID & ciphertext present
             (Some(id), Some(ct)) => Some(KyberPayload::new(id.into(), ct.into_boxed_slice())),
+            // Backward compatibility
             (None, None) if message_version <= CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION => None,
+            // Require Kyber, can't have partial Kyber payload
             (None, None) => {
                 return Err(SignalProtocolError::InvalidMessage(
                     CiphertextMessageType::PreKey,
@@ -438,15 +470,27 @@ impl TryFrom<&[u8]> for PreKeySignalMessage {
             }
         };
 
+        let pvrf_payload = match proto_structure.pvrf_ciphertext {
+            Some(ct) => Some(PvrfPayload::new(ct.into_boxed_slice())),
+            None if message_version <= CIPHERTEXT_MESSAGE_PRE_KYBER_VERSION => None,
+            None => {
+                return Err(SignalProtocolError::InvalidMessage(
+                    CiphertextMessageType::PreKey,
+                    "PVRF ciphertext must be present for this session version",
+                ));
+            }
+        };
+
         Ok(PreKeySignalMessage {
             message_version,
             registration_id: proto_structure.registration_id.unwrap_or(0),
             pre_key_id: proto_structure.pre_key_id.map(|id| id.into()),
             signed_pre_key_id: signed_pre_key_id.into(),
             kyber_payload,
+            pvrf_payload,
             base_key,
             identity_key: IdentityKey::try_from(identity_key.as_ref())?,
-            message: SignalMessage::try_from(message.as_ref())?,
+            message: SignalMessage::try_from(message.as_ref())?,    // Validates ciphertext format & internal structure
             serialized: Box::from(value),
         })
     }
@@ -983,6 +1027,7 @@ mod tests {
             None,
             97.into(),
             None, // TODO: add kyber prekeys
+            None,
             base_key_pair.public_key,
             identity_key_pair.public_key.into(),
             message,
@@ -1094,6 +1139,7 @@ mod tests {
             None,
             97.into(),
             None, // TODO: add kyber prekeys
+            None,
             base_key_pair.public_key,
             identity_key_pair.public_key.into(),
             message,

@@ -415,6 +415,7 @@ fn PreKeySignalMessage_New(
         pre_key_id.map(|id| id.into()),
         signed_pre_key_id.into(),
         None, // TODO: accept kyber payload
+        None,
         *base_key,
         IdentityKey::new(*identity_key),
         signal_message.clone(),
@@ -991,6 +992,55 @@ fn SessionRecord_CurrentRatchetKeyMatches(s: &SessionRecord, key: &PublicKey) ->
     s.current_ratchet_key_matches(key)
 }
 
+#[bridge_fn]
+fn SessionRecord_GetSAS(s: &SessionRecord) -> Result<Vec<u8>> {
+    s.get_sas()
+}
+
+#[bridge_fn]
+fn SessionRecord_GetVTS(s: &SessionRecord) -> Result<Vec<u8>> {
+    //get_vts returns Result<(EdwardsPoint, EdwardsPoint, (Scalar, (Scalar, Scalar)), EdwardsPoint, Vec<u8>, Scalar, Scalar, Vec<u8>), SignalProtocolError>
+    let (h, hprime, (s1, (s2_1, s2_2)), vk, x, r1, r2, contrib_salt) = s.get_vts()?;
+
+    // serialize each element into bytes
+    let mut out = Vec::new();
+    out.extend(h.compress().as_bytes());
+    out.extend(hprime.compress().as_bytes());
+    out.extend(s1.to_bytes());
+    out.extend(s2_1.to_bytes());
+    out.extend(s2_2.to_bytes());
+
+    // lengths for variable-length byte arrays
+    out.extend(vk.compress().as_bytes());
+    out.extend(&(x.len() as u32).to_le_bytes());
+    out.extend(&x);
+
+    out.extend(r1.to_bytes());
+    out.extend(r2.to_bytes());
+    out.extend(&(contrib_salt.len() as u32).to_le_bytes());
+    out.extend(&contrib_salt);
+
+    Ok(out)
+}
+
+#[bridge_fn]
+fn SessionRecord_GetBobResponse(s: &SessionRecord) -> Result<Vec<u8>> {
+    //Result<(EdwardsPoint, Vec<u8>, (EdwardsPoint, EdwardsPoint, (Scalar, (Scalar, Scalar))), Vec<u8>, (EdwardsPoint, EdwardsPoint), Scalar, Scalar), SignalProtocolError>
+    let (z, (w, v), c, computed_c) = s.get_bob_response()?;
+
+    let mut out = Vec::new();
+
+    out.extend(&(z.len() as u32).to_le_bytes());
+    out.extend(z);
+    out.extend(w.compress().as_bytes());
+    out.extend(v.compress().as_bytes());
+    out.extend(c.to_bytes());
+    out.extend(computed_c.to_bytes());
+
+
+    Ok(out)
+}
+
 bridge_deserialize!(SessionRecord::deserialize);
 bridge_get!(SessionRecord::serialize as Serialize -> Vec<u8>);
 bridge_get!(
@@ -1249,4 +1299,21 @@ async fn GroupCipher_DecryptMessage(
     store: &mut dyn SenderKeyStore,
 ) -> Result<Vec<u8>> {
     group_decrypt(message, store, sender).await
+}
+
+#[bridge_fn]
+fn Pvrf_Verify(
+    vk: &[u8],
+    x: &[u8],
+    alpha: &[u8],
+    beta: &[u8],
+    w: &[u8],
+    v: &[u8],
+) -> Result<Vec<u8>> {
+    let (ok, z) = pvrf_verify_from_session_data(vk, x, alpha, beta, w, v)?;
+    let mut out = Vec::new();
+    out.push(if ok { 1 } else { 0 });
+    out.extend(&(z.len() as u32).to_le_bytes());
+    out.extend(&z);
+    Ok(out)
 }

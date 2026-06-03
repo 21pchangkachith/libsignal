@@ -14,6 +14,7 @@ pub struct AliceSignalProtocolParameters {
     their_one_time_pre_key: Option<PublicKey>,
     their_ratchet_key: PublicKey,
     their_kyber_pre_key: kem::PublicKey,
+    their_pvrf_pre_key: Option<kem::PublicKey>,
 }
 
 impl AliceSignalProtocolParameters {
@@ -33,7 +34,18 @@ impl AliceSignalProtocolParameters {
             their_one_time_pre_key: None,
             their_ratchet_key,
             their_kyber_pre_key,
+            their_pvrf_pre_key: None,
         }
+    }
+
+
+    pub fn set_their_pvrf_pre_key(&mut self, pvrf_public: &kem::PublicKey) {
+        self.their_pvrf_pre_key = Some(pvrf_public.clone());
+    }
+
+    pub fn with_their_pvrf_pre_key(mut self, pvrf_public: &kem::PublicKey) -> Self {
+        self.set_their_pvrf_pre_key(pvrf_public);
+        self
     }
 
     pub fn set_their_one_time_pre_key(&mut self, ec_public: PublicKey) {
@@ -76,6 +88,11 @@ impl AliceSignalProtocolParameters {
     }
 
     #[inline]
+    pub fn their_pvrf_pre_key(&self) -> Option<&kem::PublicKey> {
+        self.their_pvrf_pre_key.as_ref()
+    }
+
+    #[inline]
     pub fn their_ratchet_key(&self) -> &PublicKey {
         &self.their_ratchet_key
     }
@@ -91,6 +108,7 @@ pub struct BobSignalProtocolParameters<'a> {
     their_identity_key: IdentityKey,
     their_base_key: PublicKey,
     their_kyber_ciphertext: &'a kem::SerializedCiphertext,
+    their_pvrf_ciphertext: Option<&'a kem::SerializedCiphertext>,
 }
 
 impl<'a> BobSignalProtocolParameters<'a> {
@@ -104,6 +122,7 @@ impl<'a> BobSignalProtocolParameters<'a> {
         their_identity_key: IdentityKey,
         their_base_key: PublicKey,
         their_kyber_ciphertext: &'a kem::SerializedCiphertext,
+        their_pvrf_ciphertext: Option<&'a kem::SerializedCiphertext>,
     ) -> Self {
         Self {
             our_identity_key_pair,
@@ -114,6 +133,7 @@ impl<'a> BobSignalProtocolParameters<'a> {
             their_identity_key,
             their_base_key,
             their_kyber_ciphertext,
+            their_pvrf_ciphertext
         }
     }
 
@@ -155,5 +175,10 @@ impl<'a> BobSignalProtocolParameters<'a> {
     #[inline]
     pub fn their_kyber_ciphertext(&self) -> &kem::SerializedCiphertext {
         self.their_kyber_ciphertext
+    }
+
+    #[inline]
+    pub fn their_pvrf_ciphertext(&self) -> Option<&kem::SerializedCiphertext> {
+        self.their_pvrf_ciphertext
     }
 }

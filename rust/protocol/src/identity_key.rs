@@ -23,7 +23,7 @@ const ALTERNATE_IDENTITY_SIGNATURE_PREFIX_2: &[u8] = b"Signal_PNI_Signature";
     Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy, derive_more::From, derive_more::Into,
 )]
 pub struct IdentityKey {
-    public_key: PublicKey,
+    public_key: PublicKey,  // Alice's or Bob's ik
 }
 
 impl IdentityKey {

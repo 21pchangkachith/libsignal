@@ -56,13 +56,13 @@ pub use libsignal_core::{
     Aci, DeviceId, Pni, ProtocolAddress, ServiceId, ServiceIdFixedWidthBinaryBytes, ServiceIdKind,
 };
 pub use protocol::{
-    CiphertextMessage, CiphertextMessageType, DecryptionErrorMessage, KyberPayload,
+    CiphertextMessage, CiphertextMessageType, DecryptionErrorMessage, KyberPayload, PvrfPayload,
     PlaintextContent, PreKeySignalMessage, SenderKeyDistributionMessage, SenderKeyMessage,
     SignalMessage, extract_decryption_error_message_from_serialized_content,
 };
 pub use ratchet::{
     AliceSignalProtocolParameters, BobSignalProtocolParameters, initialize_alice_session_record,
-    initialize_bob_session_record,
+    initialize_bob_session_record,pvrf_verify_from_session_data
 };
 pub use sealed_sender::{
     ContentHint, SealedSenderDecryptionResult, SealedSenderV2SentMessage,
